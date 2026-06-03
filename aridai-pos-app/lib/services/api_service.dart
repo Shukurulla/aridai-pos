@@ -157,6 +157,50 @@ class ApiService {
         .toList();
   }
 
+  /// A single order by id — `GET /orders/<id>`. Used to refresh the detail
+  /// screen. Throws an [Exception] with a readable (Russian) message on any
+  /// failure.
+  Future<OrderModel> getOrder(String id) async {
+    try {
+      final response = await _dio.get('/orders/$id');
+      final body = response.data;
+      if (body is Map && body['status'] == 'success') {
+        final data = body['data'];
+        if (data is Map) {
+          return OrderModel.fromJson(data.cast<String, dynamic>());
+        }
+        throw Exception('Некорректный ответ сервера');
+      }
+      throw Exception(
+        body is Map ? _messageFromBody(body) : 'Некорректный ответ сервера',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) throw Exception(_messageFromBody(data));
+      throw Exception(_networkMessage(e));
+    }
+  }
+
+  /// Create an order — `POST /orders/place` with
+  /// `{ tableId?, items: [{ foodId, quantity, note? }], orderType }`, where
+  /// [orderType] is `"dineIn"` or `"takeaway"`. dine-in requires a [tableId].
+  /// An OPEN shift must exist (the backend answers 400 «Сначала откройте
+  /// смену» otherwise). Returns the created [OrderModel]; throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<OrderModel> placeOrder({
+    String? tableId,
+    required List<Map<String, dynamic>> items,
+    required String orderType,
+  }) async {
+    final body = <String, dynamic>{
+      'items': items,
+      'orderType': orderType,
+      if (tableId != null && tableId.isNotEmpty) 'tableId': tableId,
+    };
+    final data = await _writeJson('post', '/orders/place', body);
+    return OrderModel.fromJson(data);
+  }
+
   // ─── Cook kitchen queue ────────────────────────────────────────────
 
   /// The cook's kitchen queue for the current branch. The server already

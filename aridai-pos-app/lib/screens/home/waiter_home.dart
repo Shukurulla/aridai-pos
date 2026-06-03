@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../models/user.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../waiter/create_order_screen.dart';
 import '../waiter/menu_tab.dart';
 import '../waiter/orders_tab.dart';
 import '../waiter/profile_tab.dart';
 import '../waiter/tables_tab.dart';
 
-/// Home for the waiter role: a bottom-nav shell over four read-only screens —
-/// Заказы / Столы / Меню / Профиль. Order creation and real-time updates are
-/// a later phase.
+/// Home for the waiter role: a bottom-nav shell over Заказы / Столы / Меню /
+/// Профиль, plus a red "+ Новый заказ" action. Opens the real-time socket so
+/// the orders & tables tabs live-refresh on `orders:changed`.
 class WaiterHome extends StatefulWidget {
   const WaiterHome({super.key, required this.user, required this.onLogout});
 
@@ -24,21 +26,83 @@ class WaiterHome extends StatefulWidget {
 class _WaiterHomeState extends State<WaiterHome> {
   int _index = 0;
 
+  final GlobalKey<OrdersTabState> _ordersKey = GlobalKey<OrdersTabState>();
+  final GlobalKey<TablesTabState> _tablesKey = GlobalKey<TablesTabState>();
+
   late final List<Widget> _tabs = [
-    OrdersTab(user: widget.user),
-    const TablesTab(),
+    OrdersTab(key: _ordersKey, user: widget.user),
+    TablesTab(key: _tablesKey),
     const MenuTab(),
     ProfileTab(user: widget.user, onLogout: widget.onLogout),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Real-time updates; tolerates being offline (no crash).
+    SocketService.instance.connect();
+  }
+
+  Future<void> _newOrder() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const CreateOrderScreen()),
+    );
+    if (!mounted || created != true) return;
+    setState(() => _index = 0); // switch to Заказы
+    _ordersKey.currentState?.reload();
+    _tablesKey.currentState?.reload();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(index: _index, children: _tabs),
+      floatingActionButton: (_index == 0 || _index == 1)
+          ? _NewOrderButton(onTap: _newOrder)
+          : null,
       bottomNavigationBar: _BottomBar(
         index: _index,
         onTap: (i) => setState(() => _index = i),
+      ),
+    );
+  }
+}
+
+/// Red pill FAB — "+ Новый заказ".
+class _NewOrderButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _NewOrderButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.red,
+      borderRadius: BorderRadius.circular(14),
+      elevation: 3,
+      shadowColor: AppColors.red.withValues(alpha: 0.4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.add, size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                'Новый заказ',
+                style: sansStyle(
+                  size: 13,
+                  weight: FontWeight.w600,
+                  color: Colors.white,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,25 +1,32 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/order.dart';
 import '../../models/table_model.dart';
 import '../../services/api_service.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import 'create_order_screen.dart';
+import 'order_detail_screen.dart';
 
-/// Read-only grid of tables/cabins with an occupied/free accent.
+/// Grid of tables/cabins with an occupied/free accent.
 ///
 /// A table counts as occupied when some order has
 /// `orderType == dineIn && !isCancel && paymentStatus != "paid"` on that
-/// table number. Order creation is a later phase — tapping only hints "Скоро".
+/// table number. Tapping a FREE table starts a new order on it; tapping an
+/// OCCUPIED one opens that table's open order. Live-refreshes on
+/// `orders:changed` (pull-to-refresh + a 10s timer remain as fallbacks).
 class TablesTab extends StatefulWidget {
   const TablesTab({super.key});
 
   @override
-  State<TablesTab> createState() => _TablesTabState();
+  State<TablesTab> createState() => TablesTabState();
 }
 
-class _TablesTabState extends State<TablesTab> {
+class TablesTabState extends State<TablesTab> {
   final ApiService _api = ApiService.instance;
 
   bool _isLoading = true;
@@ -27,10 +34,35 @@ class _TablesTabState extends State<TablesTab> {
   List<TableModel> _tables = const [];
   Set<int> _occupied = const {};
 
+  /// table number -> its open dine-in order (for the occupied-tap → detail).
+  Map<int, OrderModel> _openByTable = const {};
+
+  StreamSubscription<void>? _socketSub;
+  Timer? _pollTimer;
+
+  /// Reload tables + orders (socket, timer, and parent all use this).
+  void reload() => _load();
+
   @override
   void initState() {
     super.initState();
     _load();
+    _socketSub = SocketService.instance.onOrdersChanged.listen((_) {
+      if (mounted) _load();
+    });
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) {
+        if (mounted && !_isLoading) _load();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _socketSub?.cancel();
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -44,12 +76,21 @@ class _TablesTabState extends State<TablesTab> {
       final orders = results[1] as List<OrderModel>;
 
       final occupied = <int>{};
+      final openByTable = <int, OrderModel>{};
       for (final o in orders) {
         if (o.isDineIn &&
             !o.isCancel &&
             o.paymentStatus != 'paid' &&
             o.tableNumber != null) {
           occupied.add(o.tableNumber!);
+          // Keep the newest open order for the table.
+          final existing = openByTable[o.tableNumber!];
+          if (existing == null ||
+              (o.createdAt != null &&
+                  (existing.createdAt == null ||
+                      o.createdAt!.isAfter(existing.createdAt!)))) {
+            openByTable[o.tableNumber!] = o;
+          }
         }
       }
 
@@ -59,6 +100,7 @@ class _TablesTabState extends State<TablesTab> {
       setState(() {
         _tables = tables;
         _occupied = occupied;
+        _openByTable = openByTable;
         _isLoading = false;
         _error = null;
       });
@@ -71,21 +113,24 @@ class _TablesTabState extends State<TablesTab> {
     }
   }
 
-  void _onTap() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Скоро',
-          style: sansStyle(size: 13, weight: FontWeight.w500, color: Colors.white),
-        ),
-        backgroundColor: AppColors.ink,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+  Future<void> _onTapTable(TableModel t) async {
+    if (_occupied.contains(t.number)) {
+      final order = _openByTable[t.number];
+      if (order == null) {
+        // Race: marked occupied but no order in hand — just refresh.
+        _load();
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)),
+      );
+      if (mounted) _load();
+    } else {
+      final created = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => CreateOrderScreen(table: t)),
+      );
+      if (mounted && created == true) _load();
+    }
   }
 
   @override
@@ -219,7 +264,7 @@ class _TablesTabState extends State<TablesTab> {
           return _TableCard(
             table: t,
             occupied: _occupied.contains(t.number),
-            onTap: _onTap,
+            onTap: () => _onTapTable(t),
           );
         },
       ),

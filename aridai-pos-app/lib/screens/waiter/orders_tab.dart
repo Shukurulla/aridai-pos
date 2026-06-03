@@ -1,33 +1,62 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/order.dart';
 import '../../models/user.dart';
 import '../../services/api_service.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import 'order_detail_screen.dart';
 
-/// Read-only list of THIS waiter's orders (newest first).
+/// Read-only list of THIS waiter's orders (newest first). Live-refreshes on
+/// `orders:changed` socket events (with pull-to-refresh + a 10s timer as
+/// fallbacks). Tapping a card opens [OrderDetailScreen].
 class OrdersTab extends StatefulWidget {
   const OrdersTab({super.key, required this.user});
 
   final User user;
 
   @override
-  State<OrdersTab> createState() => _OrdersTabState();
+  State<OrdersTab> createState() => OrdersTabState();
 }
 
-class _OrdersTabState extends State<OrdersTab> {
+class OrdersTabState extends State<OrdersTab> {
   final ApiService _api = ApiService.instance;
 
   bool _isLoading = true;
   String? _error;
   List<OrderModel> _orders = const [];
 
+  StreamSubscription<void>? _socketSub;
+  Timer? _pollTimer;
+
+  /// Reload the list (used by the socket, the timer, and the parent after an
+  /// order is created).
+  void reload() => _load();
+
   @override
   void initState() {
     super.initState();
     _load();
+    _socketSub = SocketService.instance.onOrdersChanged.listen((_) {
+      if (mounted) _load();
+    });
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) {
+        if (mounted && !_isLoading) _load();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _socketSub?.cancel();
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -167,7 +196,16 @@ class _OrdersTabState extends State<OrdersTab> {
         itemCount: _orders.length,
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: _OrderCard(order: _orders[i]),
+          child: _OrderCard(
+            order: _orders[i],
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OrderDetailScreen(order: _orders[i]),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -201,7 +239,8 @@ class _RefreshButton extends StatelessWidget {
 
 class _OrderCard extends StatelessWidget {
   final OrderModel order;
-  const _OrderCard({required this.order});
+  final VoidCallback onTap;
+  const _OrderCard({required this.order, required this.onTap});
 
   /// (label, foreground, background) for the status chip.
   ({String label, Color fg, Color bg}) get _status {
@@ -248,19 +287,24 @@ class _OrderCard extends StatelessWidget {
     final itemCount = order.items.fold<int>(0, (s, i) => s + i.quantity);
     final muted = order.isCancel;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(left: BorderSide(color: st.fg, width: 3)),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Row(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.line),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: st.fg, width: 3)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             TableBlock(number: _blockNumber, accent: muted),
@@ -358,6 +402,8 @@ class _OrderCard extends StatelessWidget {
               ],
             ),
           ],
+            ),
+          ),
         ),
       ),
     );
