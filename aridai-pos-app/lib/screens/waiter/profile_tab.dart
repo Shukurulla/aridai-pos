@@ -20,6 +20,21 @@ class ProfileTab extends StatelessWidget {
     return letters.isEmpty ? '?' : letters;
   }
 
+  /// Short "rate" stat for the user card (mirrors the reference's Ставка stat).
+  String _rateLabel(SalaryInfo? s) {
+    if (s == null) return '—';
+    switch (s.mode) {
+      case 'daily':
+        return fmtMoney(s.amount);
+      case 'monthly':
+        return fmtMoney(s.amount);
+      case 'percent':
+        return '${fmtNumber(s.amount)}%';
+      default:
+        return '—';
+    }
+  }
+
   /// Prefer the freshest user (session may have been refreshed).
   User get _user => ApiService.instance.currentUser ?? user;
 
@@ -33,7 +48,7 @@ class ProfileTab extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -58,6 +73,7 @@ class ProfileTab extends StatelessWidget {
                 roleLabel: 'Официант',
                 place: place,
                 phone: u.phone,
+                rate: _rateLabel(u.salary),
               ),
 
               const SizedBox(height: 20),
@@ -117,6 +133,7 @@ class _UserCard extends StatelessWidget {
   final String roleLabel;
   final String place;
   final String phone;
+  final String rate;
 
   const _UserCard({
     required this.initials,
@@ -124,7 +141,28 @@ class _UserCard extends StatelessWidget {
     required this.roleLabel,
     required this.place,
     required this.phone,
+    required this.rate,
   });
+
+  Widget _stat(String label, Widget value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: GoogleFonts.ibmPlexSans(
+              fontSize: 9,
+              color: Colors.white.withValues(alpha: 0.5),
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 3),
+          value,
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,8 +175,8 @@ class _UserCard extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            right: -10,
-            top: -10,
+            right: -20,
+            top: -20,
             child: Diamond(
               size: 90,
               color: AppColors.red.withValues(alpha: 0.15),
@@ -146,71 +184,116 @@ class _UserCard extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.all(18),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: const BoxDecoration(
-                    color: AppColors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    initials,
-                    style: GoogleFonts.ibmPlexSans(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.ibmPlexSans(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                          letterSpacing: -0.2,
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: const BoxDecoration(
+                        color: AppColors.red,
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$roleLabel · $place',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      alignment: Alignment.center,
+                      child: Text(
+                        initials,
                         style: GoogleFonts.ibmPlexSans(
-                          fontSize: 11,
-                          color: Colors.white.withValues(alpha: 0.6),
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
                           letterSpacing: 0.4,
                         ),
                       ),
-                      if (phone.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Diamond(size: 5, color: AppColors.red),
-                            const SizedBox(width: 6),
-                            Text(
-                              phone,
-                              style: numStyle(
-                                size: 11,
-                                color: Colors.white.withValues(alpha: 0.8),
-                              ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fullName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.ibmPlexSans(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '$roleLabel · $place',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.ibmPlexSans(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.6),
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                          if (phone.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Diamond(size: 5, color: AppColors.red),
+                                const SizedBox(width: 6),
+                                Text(
+                                  phone,
+                                  style: numStyle(
+                                    size: 11,
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _stat(
+                      'Ставка',
+                      Text(
+                        rate,
+                        style: numStyle(
+                          size: 16,
+                          weight: FontWeight.w500,
+                          color: AppColors.red,
                         ),
-                      ],
-                    ],
-                  ),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 30,
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                    const SizedBox(width: 14),
+                    _stat(
+                      'Заведение',
+                      Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.ibmPlexSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -244,12 +327,7 @@ class _SalaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = _display;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
-        borderRadius: BorderRadius.circular(14),
-      ),
+    return AppCard(
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
@@ -301,12 +379,7 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
-        borderRadius: BorderRadius.circular(14),
-      ),
+    return AppCard(
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [

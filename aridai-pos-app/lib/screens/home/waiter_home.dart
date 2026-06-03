@@ -55,63 +55,37 @@ class _WaiterHomeState extends State<WaiterHome> {
 
   @override
   Widget build(BuildContext context) {
+    // The "+ Новый заказ" action only exists on the Заказы / Столы tabs.
+    final showFab = _index == 0 || _index == 1;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(index: _index, children: _tabs),
-      floatingActionButton: (_index == 0 || _index == 1)
-          ? _NewOrderButton(onTap: _newOrder)
-          : null,
+      extendBody: true,
       bottomNavigationBar: _BottomBar(
         index: _index,
+        showFab: showFab,
         onTap: (i) => setState(() => _index = i),
+        onFab: _newOrder,
       ),
     );
   }
 }
 
-/// Red pill FAB — "+ Новый заказ".
-class _NewOrderButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _NewOrderButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.red,
-      borderRadius: BorderRadius.circular(14),
-      elevation: 3,
-      shadowColor: AppColors.red.withValues(alpha: 0.4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.add, size: 18, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                'Новый заказ',
-                style: sansStyle(
-                  size: 13,
-                  weight: FontWeight.w600,
-                  color: Colors.white,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+/// Black bottom-nav bar with a floating red "+" FAB centred on its top edge —
+/// ported from the reference `main_screen` so the shell matches screen-for-
+/// screen. The FAB runs [onFab] (the same "+ Новый заказ" flow) and only
+/// appears on the tabs where creating an order is allowed.
 class _BottomBar extends StatelessWidget {
   final int index;
+  final bool showFab;
   final ValueChanged<int> onTap;
-  const _BottomBar({required this.index, required this.onTap});
+  final VoidCallback onFab;
+  const _BottomBar({
+    required this.index,
+    required this.showFab,
+    required this.onTap,
+    required this.onFab,
+  });
 
   static const _items = <({IconData icon, IconData active, String label})>[
     (
@@ -138,27 +112,85 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.ink,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 6),
-          child: Row(
-            children: List.generate(_items.length, (i) {
-              return Expanded(
-                child: _NavItem(
-                  item: _items[i],
-                  active: index == i,
-                  onTap: () => onTap(i),
+    return SizedBox(
+      height: 100,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Main black bar with rounded top corners.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppColors.ink,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 14, bottom: 6),
+                  child: Row(
+                    children: List.generate(_items.length, (i) {
+                      return Expanded(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: _NavItem(
+                            item: _items[i],
+                            active: index == i,
+                            onTap: () => onTap(i),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
                 ),
-              );
-            }),
+              ),
+            ),
           ),
+          // Centred floating red FAB — the "+ Новый заказ" action.
+          if (showFab)
+            Positioned(
+              top: -28,
+              left: 0,
+              right: 0,
+              child: Center(child: _CenterFab(onTap: onFab)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Floating red circle "+" button that hovers over the nav bar.
+class _CenterFab extends StatelessWidget {
+  final VoidCallback onTap;
+  const _CenterFab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: AppColors.red,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.red.withValues(alpha: 0.5),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+            const BoxShadow(
+              color: AppColors.redInk,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
       ),
     );
   }

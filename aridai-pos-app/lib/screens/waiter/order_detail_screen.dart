@@ -255,13 +255,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _statusHeader() {
     final st = _status;
     final itemCount = _order.items.fold<int>(0, (s, i) => s + i.quantity);
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
-        borderRadius: BorderRadius.circular(14),
-      ),
       child: Row(
         children: [
           TableBlock(number: _blockNumber),

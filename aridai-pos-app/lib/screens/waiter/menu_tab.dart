@@ -215,7 +215,7 @@ class _MenuTabState extends State<MenuTab> {
       onRefresh: _load,
       color: AppColors.red,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
         itemCount: foods.length,
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(bottom: 8),

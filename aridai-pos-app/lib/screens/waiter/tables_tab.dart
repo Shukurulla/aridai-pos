@@ -251,7 +251,7 @@ class TablesTabState extends State<TablesTab> {
       onRefresh: _load,
       color: AppColors.red,
       child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisSpacing: 12,
