@@ -201,6 +201,21 @@ class ApiService {
     return OrderModel.fromJson(data);
   }
 
+  /// Append items to an existing open order — `POST /orders/<orderId>/items`
+  /// with `{ items: [{ foodId, quantity }] }`. Returns the updated
+  /// [OrderModel]. The backend answers 400 when the order is already paid
+  /// («Заказ уже оплачен») or cancelled («Заказ отменён»). Throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<OrderModel> addItems(
+    String orderId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final data = await _writeJson('post', '/orders/$orderId/items', {
+      'items': items,
+    });
+    return OrderModel.fromJson(data);
+  }
+
   // ─── Cook kitchen queue ────────────────────────────────────────────
 
   /// The cook's kitchen queue for the current branch. The server already

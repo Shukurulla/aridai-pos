@@ -16,11 +16,21 @@ import '../../utils/waiter_design.dart';
 /// When [table] is supplied the type is forced to Зал and that table is
 /// preselected (still changeable). Pops `true` on a successful create so the
 /// caller can switch to the orders tab and reload.
+///
+/// When [addToOrder] is supplied the screen switches to "add items" mode: the
+/// type toggle and table picker are hidden, the menu + cart stay the same, and
+/// submitting appends the cart to that existing order via
+/// `POST /orders/<id>/items` instead of creating a new one. Pops `true` on
+/// success so the caller can re-fetch the order.
 class CreateOrderScreen extends StatefulWidget {
-  const CreateOrderScreen({super.key, this.table});
+  const CreateOrderScreen({super.key, this.table, this.addToOrder});
 
   /// Optional preselected dine-in table.
   final TableModel? table;
+
+  /// When non-null, the screen adds items to this existing order instead of
+  /// creating a new one.
+  final OrderModel? addToOrder;
 
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
@@ -53,6 +63,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   /// foodId -> Food (so the cart can render names/prices without a re-lookup).
   final Map<String, Food> _cartFoods = {};
+
+  /// True when adding items to an existing order (hides type/table controls).
+  bool get _isAddMode => widget.addToOrder != null;
 
   @override
   void initState() {
@@ -139,9 +152,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
+  /// Receipt label for the add-mode subtitle: `#123`, or `#—` when blank.
+  String _receiptLabel(OrderModel o) =>
+      o.receiptNumber.isEmpty ? '#—' : '#${o.receiptNumber}';
+
   bool get _canSubmit {
     if (_submitting || _cart.isEmpty) return false;
-    if (_orderType == 'dineIn' && _table == null) return false;
+    if (!_isAddMode && _orderType == 'dineIn' && _table == null) return false;
     return true;
   }
 
@@ -152,13 +169,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       final items = _cart.entries
           .map((e) => <String, dynamic>{'foodId': e.key, 'quantity': e.value})
           .toList();
-      await _api.placeOrder(
-        tableId: _orderType == 'dineIn' ? _table?.id : null,
-        items: items,
-        orderType: _orderType,
-      );
-      if (!mounted) return;
-      _snack('Заказ создан', AppColors.ok);
+      if (_isAddMode) {
+        await _api.addItems(widget.addToOrder!.id, items);
+        if (!mounted) return;
+        _snack('Блюда добавлены', AppColors.ok);
+      } else {
+        await _api.placeOrder(
+          tableId: _orderType == 'dineIn' ? _table?.id : null,
+          items: items,
+          orderType: _orderType,
+        );
+        if (!mounted) return;
+        _snack('Заказ создан', AppColors.ok);
+      }
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -216,7 +239,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         child: Column(
           children: [
             _topBar(),
-            if (!_isLoading && _error == null) _typeAndTable(),
+            if (!_isLoading && _error == null && !_isAddMode) _typeAndTable(),
             if (!_isLoading && _error == null && _categories.isNotEmpty)
               _categoryBar(),
             Expanded(child: _body()),
@@ -248,7 +271,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Новый заказ',
+                  _isAddMode ? 'Добавить блюда' : 'Новый заказ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.ibmPlexSans(
                     fontSize: 18,
                     fontWeight: FontWeight.w500,
@@ -258,7 +283,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  _isLoading ? 'Загрузка…' : '${_foods.length} блюд',
+                  _isAddMode
+                      ? 'Заказ ${_receiptLabel(widget.addToOrder!)}'
+                      : (_isLoading ? 'Загрузка…' : '${_foods.length} блюд'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: sansStyle(size: 11, color: AppColors.mute),
                 ),
               ],
@@ -480,7 +509,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   // ─── Bottom cart bar ────────────────────────────────────────────────────
   Widget _cartBar() {
     final empty = _cart.isEmpty;
-    final needsTable = _orderType == 'dineIn' && _table == null;
+    final needsTable = !_isAddMode && _orderType == 'dineIn' && _table == null;
     final enabled = _canSubmit;
 
     final String hint;
@@ -488,6 +517,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       hint = 'Корзина пуста';
     } else if (needsTable) {
       hint = 'Выберите стол';
+    } else if (_isAddMode) {
+      hint = 'Добавить';
     } else {
       hint = 'Оформить';
     }

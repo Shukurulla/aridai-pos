@@ -175,6 +175,57 @@ router.post("/place", authMiddleware, async (req, res) => {
   }
 });
 
+// ===== Mavjud ochiq orderga taom qo'shish (waiter "+ Блюдо") =====
+router.post("/:id/items", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+    const order = await orderModel.findById(id);
+    if (!order) return res.status(404).json({ status: "error", message: "Bunday order topilmadi" });
+    if (String(order.restaurantId) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
+    if (order.isCancel) return res.status(400).json({ status: "error", message: "Заказ отменён" });
+    if (order.paymentStatus === "paid") return res.status(400).json({ status: "error", message: "Заказ уже оплачен" });
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ status: "error", message: "Добавьте блюда" });
+    }
+
+    let added = 0;
+    for (const it of items) {
+      const food = await foodModel.findOne({ _id: it.foodId, branch: order.branch });
+      if (!food) continue;
+      const f = {
+        foodId: food._id,
+        foodName: food.name,
+        foodPrice: food.price,
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        note: it.note || null,
+        cancels: [],
+        cookingStatus: "waiting",
+      };
+      if (food.isHourly) {
+        f.isHourly = true;
+        f.hourlyPrice = food.price;
+        f.hourlyStartedAt = new Date();
+      }
+      order.foods.push(f);
+      added += 1;
+    }
+    if (!added) return res.status(400).json({ status: "error", message: "Блюда не найдены" });
+
+    recalcOrder(order);
+    order.syncStatus = "pending";
+    await order.save();
+
+    emitToBranch(order.branch, "orders:changed", { orderId: String(order._id) });
+    const populated = await populateOrder(orderModel.findById(id));
+    return res.status(200).json({ status: "success", data: populated });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
 router.get("/all/:branchId", authMiddleware, async (req, res) => {
   try {
     const { branchId } = req.params;

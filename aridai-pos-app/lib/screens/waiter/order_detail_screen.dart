@@ -5,12 +5,16 @@ import '../../models/order.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import 'create_order_screen.dart';
 
 /// Read-only order / receipt view. Shows the header (receipt #, type, waiter,
 /// time, status), item lines, and the totals block (Подытог / Обслуживание /
 /// Итого). Pull-to-refresh re-fetches the order via `GET /orders/<id>`; if that
-/// fails the originally passed order is kept. No edit / pay / cooking actions
-/// here yet.
+/// fails the originally passed order is kept.
+///
+/// When the order is still open (pending & not cancelled) a "+ Блюдо" button
+/// opens [CreateOrderScreen] in add-items mode; on success the order is
+/// re-fetched so the new items/total show up.
 class OrderDetailScreen extends StatefulWidget {
   const OrderDetailScreen({super.key, required this.order});
 
@@ -33,6 +37,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (_) {
       // Keep the passed order on any failure — this is a best-effort refresh.
     }
+  }
+
+  /// An open order accepts more items (not paid and not cancelled).
+  bool get _isOpen => _order.paymentStatus == 'pending' && !_order.isCancel;
+
+  /// Open the menu in add-items mode; re-fetch the order on success so the new
+  /// items and total are reflected.
+  Future<void> _addDishes() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateOrderScreen(addToOrder: _order),
+      ),
+    );
+    if (added == true) await _refresh();
   }
 
   ({String label, Color fg, Color bg}) get _status {
@@ -121,7 +140,66 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
               ),
             ),
+            if (_isOpen) _addBar(),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Bottom "+ Блюдо" bar (open orders only) ────────────────────────────
+  Widget _addBar() {
+    return Container(
+      color: AppColors.bg,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: SafeArea(
+        top: false,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: AppColors.line)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Material(
+              color: AppColors.ink,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _addDishes,
+                child: Container(
+                  height: 52,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.red,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.add,
+                            size: 16, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'БЛЮДО',
+                        style: GoogleFonts.ibmPlexSans(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
