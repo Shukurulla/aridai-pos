@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pos-renderer",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd local/aridaipos_monitor && npx vite --port 5181"],
+      "port": 5181
+    },
+    {
+      "name": "filial-admin",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd global/filial_admin && npx vite --port 5175"],
+      "port": 5175
+    },
+    {
+      "name": "aridai-pos-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd aridai-pos-app && flutter run -d web-server --web-port 5190 --web-hostname 127.0.0.1"],
+      "port": 5190
+    }
+  ]
+}

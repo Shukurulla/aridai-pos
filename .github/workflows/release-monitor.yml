@@ -1,0 +1,43 @@
+name: Release POS monitor (EXE)
+
+# local/aridaipos_monitor o'zgarsa (main'ga push) → Windows .exe (NSIS) quriladi va
+# electron-builder GitHub Release'ga publish qiladi. electron-updater shu release'ni ko'radi
+# → ilovada avtomatik yangilanish. Yangi versiya: monitor/package.json `version` ni oshiring.
+#
+# ESLATMA: monitorda electron-updater main-process wiring kerak (preload window.pos.updates,
+# autoUpdater.checkForUpdatesAndNotify) + package.json build.publish (github) — DEPLOY.md ga qarang.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "local/aridaipos_monitor/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: local/aridaipos_monitor
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: local/aridaipos_monitor/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Renderer build
+        run: npm run build:renderer
+
+      - name: Build + publish EXE
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}

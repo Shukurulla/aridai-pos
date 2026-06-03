@@ -1,0 +1,230 @@
+{
+  "main": {
+    "id": "0d7e6c3ce4310497",
+    "type": "split",
+    "children": [
+      {
+        "id": "fd081aa3e012beec",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a16661848276d9b4",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Граф"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8159782c704ca855",
+    "type": "split",
+    "children": [
+      {
+        "id": "5dba3ef5120669e8",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e57753bc93819079",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "19288a2cb1ec1976",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "96769c40a83fc2d4",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "right": {
+    "id": "037096426f2d76d3",
+    "type": "split",
+    "children": [
+      {
+        "id": "afb6a4367fce8104",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4116dcae59a6f489",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки"
+            }
+          },
+          {
+            "id": "a72d7209b2de1083",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки"
+            }
+          },
+          {
+            "id": "cdbf1af439054f4a",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "ea2db0f33a160bf0",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "3d90ff4044150a03",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false
+    }
+  },
+  "active": "a16661848276d9b4",
+  "lastOpenFiles": [
+    "global/backend/uploads/1780377316738-220319584.png",
+    "global/filial_admin/src/pages/Shifts.jsx",
+    "global/filial_admin/src/pages/Reports.jsx",
+    "global/filial_admin/src/icons.jsx",
+    "obsidian/06-changelog/2026-06-01-filial-admin-icons-image-cancel-reports-shift.md",
+    "global/filial_admin/src/pages/Orders.jsx",
+    "obsidian/06-changelog/2026-06-01-filial-admin-dizayn-orders.md",
+    "local/aridaipos_monitor/dist/renderer/assets/index-C4Cq2Is-.js",
+    "local/aridaipos_monitor/dist/renderer/assets/aridai-logo-UlIdLzZm.png",
+    "global/filial_admin/dist/assets/index-qIXH_u6X.js",
+    "global/filial_admin/dist/assets/index-BV3fKe8J.js",
+    "global/filial_admin/dist/assets/index-B-pDz-SH.css",
+    "global/filial_admin/dist/index.html",
+    "global/filial_admin/dist/assets",
+    "global/filial_admin/node_modules/caniuse-lite/README.md",
+    "global/filial_admin/node_modules/@esbuild/darwin-arm64/README.md",
+    "global/filial_admin/node_modules/react-dom/README.md",
+    "global/filial_admin/node_modules/vite/README.md",
+    "global/filial_admin/node_modules/vite/LICENSE.md",
+    "global/filial_admin/node_modules/rollup/README.md",
+    "global/filial_admin/node_modules/rollup/LICENSE.md",
+    "global/filial_admin/node_modules/@remix-run/router/README.md",
+    "global/filial_admin/node_modules/@remix-run/router/LICENSE.md",
+    "global/filial_admin/node_modules/@remix-run/router/CHANGELOG.md",
+    "global/filial_admin/node_modules/react-router-dom/README.md",
+    "global/filial_admin/node_modules/react-router-dom/LICENSE.md",
+    "global/filial_admin/node_modules/react-router-dom/CHANGELOG.md",
+    "global/filial_admin/node_modules/react-router/README.md",
+    "global/filial_admin/node_modules/react-router/LICENSE.md",
+    "global/filial_admin/node_modules/react-router/CHANGELOG.md",
+    "global/filial_admin/node_modules/postcss/README.md",
+    "global/filial_admin/node_modules/react/README.md",
+    "global/filial_admin/node_modules/@jridgewell/trace-mapping/README.md",
+    "global/filial_admin/node_modules/scheduler/README.md",
+    "global/filial_admin/node_modules/nanoid/README.md",
+    "global/filial_admin/node_modules/source-map-js/README.md",
+    "global/filial_admin/node_modules/json5/README.md",
+    "global/super_admin/public/favicon.svg",
+    "global/super_admin/dist/favicon.svg",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/64x64.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/512x512.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/48x48.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/32x32.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/256x256.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/16x16.png",
+    "local/aridaipos_monitor/node_modules/app-builder-lib/templates/icons/proton-native/linux/128x128.png",
+    "Без названия.canvas"
+  ]
+}

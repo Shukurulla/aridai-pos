@@ -1,0 +1,30 @@
+name: Deploy backend (VPS)
+
+# global/backend o'zgarsa (main'ga push) → VPS'da git pull + npm + pm2 restart.
+# Kerakli secretlar (Settings → Secrets → Actions):
+#   VPS_HOST, VPS_USER, VPS_SSH_KEY (private key), VPS_PATH (repo yo'li VPS'da)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "global/backend/**"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH → pull + restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.VPS_PATH }}"
+            git pull origin main
+            cd global/backend
+            npm ci --omit=dev
+            pm2 restart aridai-backend || pm2 start index.js --name aridai-backend
+            pm2 save

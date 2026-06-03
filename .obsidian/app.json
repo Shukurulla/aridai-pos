@@ -1,0 +1,20 @@
+{
+  "userIgnoreFilters": [
+    "node_modules/",
+    "global/backend/node_modules/",
+    "local/backend/node_modules/",
+    ".git/",
+    "uploads/",
+    "global/backend/uploads/",
+    "dist/",
+    "build/",
+    "*.lock",
+    "*.log",
+    "package-lock.json",
+    "yarn.lock",
+    ".DS_Store",
+    ".env",
+    "*.exe",
+    "*.dmg"
+  ]
+}

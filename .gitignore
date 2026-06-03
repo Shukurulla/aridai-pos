@@ -1,0 +1,66 @@
+# ===== AridaiPOS monorepo .gitignore =====
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Build artefaktlar
+dist/
+build/
+out/
+release/
+*.tsbuildinfo
+
+# Vite / web
+.vite/
+**/dist/
+**/dist-ssr/
+
+# Electron (POS monitor)
+local/aridaipos_monitor/dist/
+local/aridaipos_monitor/out/
+local/aridaipos_monitor/release/
+*.exe
+*.dmg
+*.AppImage
+*.nsis
+
+# Flutter (aridai-pos-app)
+aridai-pos-app/.dart_tool/
+aridai-pos-app/build/
+aridai-pos-app/.flutter-plugins
+aridai-pos-app/.flutter-plugins-dependencies
+aridai-pos-app/ios/Pods/
+aridai-pos-app/android/.gradle/
+aridai-pos-app/android/key.properties
+aridai-pos-app/android/app/*.jks
+*.apk
+*.aab
+
+# Loglar / vaqtinchalik
+*.log
+/tmp/
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Mongo dump
+*.dump
+dump/
+
+# Obsidian (workspace holati — vault mazmuni saqlanadi)
+obsidian/.obsidian/workspace*.json

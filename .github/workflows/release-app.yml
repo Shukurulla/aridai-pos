@@ -1,0 +1,51 @@
+name: Release mobile APK
+
+# aridai-pos-app o'zgarsa (main'ga push) → APK quriladi va GitHub Release (app-vX.Y.Z) chiqadi.
+# Ilovadagi UpdateService shu release'ni ko'radi → yangilanish bildiradi.
+# Yangi versiya uchun: aridai-pos-app/pubspec.yaml dagi `version:` ni oshiring.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "aridai-pos-app/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java (Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Versiyani o'qish (pubspec)
+        id: ver
+        run: echo "v=$(grep -m1 '^version:' aridai-pos-app/pubspec.yaml | sed 's/version:[[:space:]]*//; s/+.*//')" >> "$GITHUB_OUTPUT"
+
+      - name: APK qurish
+        working-directory: aridai-pos-app
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: GitHub Release (app-v…)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-v${{ steps.ver.outputs.v }}
+          name: Mobile app v${{ steps.ver.outputs.v }}
+          files: aridai-pos-app/build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
