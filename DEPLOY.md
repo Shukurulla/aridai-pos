@@ -9,9 +9,12 @@ AridaiPos_v2/                 ← monorepo (git root)
 │   ├── deploy-backend.yml    ← global/backend → VPS pull + pm2 restart
 │   ├── release-app.yml       ← aridai-pos-app → APK + GitHub Release (app-v*)
 │   ├── release-monitor.yml   ← local/aridaipos_monitor → EXE + Release (channel: monitor)
-│   └── release-server.yml    ← local/aridaipos_server → EXE + Release (channel: server)
-├── global/backend            ← VPS (pm2)
-├── global/{filial_admin,owner_admin,super_admin}  ← web (keyingi: static deploy)
+│   ├── release-server.yml    ← local/aridaipos_server → EXE + Release (channel: server)
+│   └── deploy-web.yml        ← global/{filial_admin,owner_admin,super_admin} → VPS build + nginx
+├── global/backend            ← VPS pm2 → https://api.asadbek-durdana.uz
+├── global/filial_admin       ← https://admin.asadbek-durdana.uz (VPS nginx + SSL)
+├── global/owner_admin        ← https://owner.asadbek-durdana.uz (VPS nginx + SSL)
+├── global/super_admin        ← https://system.asadbek-durdana.uz (VPS nginx + SSL)
 ├── local/aridaipos_monitor   ← POS .exe (electron-updater, interaktiv)
 ├── local/aridaipos_server    ← filial local server .exe (electron-updater, saylent)
 └── aridai-pos-app            ← mobil (APK / keyin AAB)
@@ -75,7 +78,9 @@ Endi `global/backend/**` o'zgarib push bo'lsa → workflow SSH bilan pull + rest
 - Monitor EXE: `local/aridaipos_monitor/package.json` version++ → push → release + auto-update.
 - Server EXE: `local/aridaipos_server/package.json` version++ → push → release + auto-update.
   (Ikkala EXE — versiyani **birga** oshirish tavsiya etiladi.)
+- Web panellar: `global/<panel>/**` push → VPS server-side build (`deploy-web.yml`),
+  versiya shart emas. nginx `dist/`'ni darhol xizmat qiladi.
 
 ## Keyingi (hali yo'q)
-Web panellar deploy (static → VPS nginx / Vercel) · APK signing (release keystore) ·
+APK signing (release keystore) ·
 code signing (EXE) · monitor↔server versiya sync skripti.
