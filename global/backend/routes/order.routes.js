@@ -6,9 +6,35 @@ import shiftModel from "../models/shift.model.js";
 import foodModel from "../models/food.model.js";
 import tableModel from "../models/table.model.js";
 import serviceModel from "../models/service.model.js";
+import usersModel from "../models/users.model.js";
 import { emitToBranch } from "../utils/socket.js";
+import { pushAsync } from "../utils/push.js";
 
 const router = express.Router();
+
+// Filialdagi cook'larga "Новый заказ" push (assigned filtr — bo'sh bo'lsa hammasiga)
+async function notifyCooks(branch, order) {
+  try {
+    const cooks = await usersModel
+      .find({ branch, role: "cook", isActive: true, "pushTokens.0": { $exists: true } })
+      .select("pushTokens assignedFoods assignedCategories");
+    const foodIds = (order.foods || []).map((f) => String(f.foodId));
+    const tokens = [];
+    for (const c of cooks) {
+      const aF = (c.assignedFoods || []).map(String);
+      const aC = (c.assignedCategories || []).map(String);
+      // biriktirilgan bo'lsa — order taomlaridan biri mosmi tekshiramiz (oddiy: food bo'yicha)
+      const relevant = aF.length === 0 && aC.length === 0 ? true : foodIds.some((id) => aF.includes(id));
+      if (relevant) tokens.push(...(c.pushTokens || []));
+    }
+    if (tokens.length) {
+      const where = order.orderType === "dineIn" ? "Зал" : order.orderType === "takeaway" ? "Собой" : "Доставка";
+      pushAsync(tokens, { title: "Новый заказ", body: `${where} · ${order.receiptNumber}` }, { orderId: String(order._id), kind: "new_order" });
+    }
+  } catch {
+    /* push xatosi order'ni to'xtatmasin */
+  }
+}
 
 // Chek raqami: PREFIX-YYYYMMDD-NNNN (kunlik hisoblagich)
 async function genReceipt(branch) {
@@ -167,6 +193,7 @@ router.post("/place", authMiddleware, async (req, res) => {
     const order = await orderModel.create(orderData);
 
     emitToBranch(branch, "orders:changed", { orderId: String(order._id), kind: "created" });
+    notifyCooks(branch, order); // FCM: cook'larga "Новый заказ"
 
     const populated = await populateOrder(orderModel.findById(order._id));
     return res.status(200).json({ status: "success", data: populated });
@@ -511,6 +538,18 @@ router.patch("/:id/items/:itemId/cooking", authMiddleware, async (req, res) => {
     await order.save();
 
     emitToBranch(order.branch, "orders:changed", { orderId: String(order._id), kind: "kitchen" });
+    // FCM: taom tayyor bo'lsa — orderning waiter'iga "Блюдо готово"
+    if (status === "ready" && order.waiter?.waiterId) {
+      usersModel
+        .findById(order.waiter.waiterId)
+        .select("pushTokens")
+        .then((w) => {
+          if (w?.pushTokens?.length) {
+            pushAsync(w.pushTokens, { title: "Блюдо готово", body: `${item.foodName} · ${order.receiptNumber}` }, { orderId: String(order._id), kind: "ready" });
+          }
+        })
+        .catch(() => {});
+    }
     return res.status(200).json({ status: "success", data: { itemId, cookingStatus: status } });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });

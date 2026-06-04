@@ -42,6 +42,9 @@ const userSchema = new mongoose.Schema(
     assignedCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "category" }],
     assignedFoods: [{ type: mongoose.Schema.Types.ObjectId, ref: "food" }],
 
+    // FCM push tokenlari (mobil qurilmalar — cook/waiter bildirishnoma)
+    pushTokens: { type: [String], default: [] },
+
     // Auth
     tokenVersion: { type: Number, default: 1 },
     isActive: { type: Boolean, default: true, index: true },

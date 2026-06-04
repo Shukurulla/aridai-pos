@@ -140,6 +140,27 @@ router.post("/staff", authMiddleware, requireRole("branch_admin", "owner", "syst
   }
 });
 
+// ===== FCM push token (mobil qurilma) — ro'yxatga olish / o'chirish =====
+router.post("/me/push-token", authMiddleware, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ status: "error", code: "TOKEN_REQUIRED" });
+    await usersModel.updateOne({ _id: req.userData._id }, { $addToSet: { pushTokens: token } });
+    return res.status(200).json({ status: "success" });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+router.delete("/me/push-token", authMiddleware, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (token) await usersModel.updateOne({ _id: req.userData._id }, { $pull: { pushTokens: token } });
+    return res.status(200).json({ status: "success" });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
 // ===== Xodim login (JWT) =====
 router.post("/login", async (req, res) => {
   try {
