@@ -9,6 +9,7 @@ import '../../models/table_model.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import 'menu_accordion.dart';
 
 /// Order creation flow. Pick an order type (Зал / Собой), a table (for Зал),
 /// then add foods to a cart and submit via `POST /orders/place`.
@@ -54,9 +55,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   /// Selected dine-in table (null = none chosen yet).
   TableModel? _table;
-
-  /// Selected category id; null = "Все".
-  String? _categoryId;
 
   /// foodId -> quantity.
   final Map<String, int> _cart = {};
@@ -115,11 +113,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
-  }
-
-  List<Food> get _visibleFoods {
-    if (_categoryId == null) return _foods;
-    return _foods.where((f) => f.categoryId == _categoryId).toList();
   }
 
   int get _totalItems => _cart.values.fold(0, (s, q) => s + q);
@@ -240,8 +233,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           children: [
             _topBar(),
             if (!_isLoading && _error == null && !_isAddMode) _typeAndTable(),
-            if (!_isLoading && _error == null && _categories.isNotEmpty)
-              _categoryBar(),
             Expanded(child: _body()),
             if (!_isLoading && _error == null) _cartBar(),
           ],
@@ -402,41 +393,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  // ─── Category chips ─────────────────────────────────────────────────────
-  Widget _categoryBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.bg,
-        border: Border(bottom: BorderSide(color: AppColors.line)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      child: SizedBox(
-        height: 32,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: [
-            WaiterChip(
-              label: 'Все',
-              active: _categoryId == null,
-              onTap: () => setState(() => _categoryId = null),
-            ),
-            ..._categories.map(
-              (c) => Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: WaiterChip(
-                  label: c.title,
-                  active: _categoryId == c.id,
-                  onTap: () => setState(() => _categoryId = c.id),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Body (foods list) ──────────────────────────────────────────────────
+  // ─── Body (foods accordion) ─────────────────────────────────────────────
   Widget _body() {
     if (_isLoading) {
       return const Center(
@@ -463,45 +420,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       );
     }
 
-    final foods = _visibleFoods;
-    if (foods.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        color: AppColors.red,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.5,
-              child: const WaiterEmpty(
-                icon: Icons.restaurant_menu,
-                title: 'Блюд нет',
-                sub: 'В этой категории пока пусто',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
+    return MenuAccordion(
+      categories: _categories,
+      foods: _foods,
       onRefresh: _load,
-      color: AppColors.red,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-        itemCount: foods.length,
-        itemBuilder: (context, i) {
-          final food = foods[i];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _FoodRow(
-              food: food,
-              quantity: _cart[food.id] ?? 0,
-              onAdd: () => _add(food),
-              onRemove: () => _remove(food),
-            ),
-          );
-        },
+      listPadding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      rowBuilder: (food) => _FoodRow(
+        food: food,
+        quantity: _cart[food.id] ?? 0,
+        onAdd: () => _add(food),
+        onRemove: () => _remove(food),
       ),
     );
   }

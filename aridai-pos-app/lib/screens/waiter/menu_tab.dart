@@ -7,6 +7,7 @@ import '../../models/food.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import 'menu_accordion.dart';
 
 /// Read-only menu browser: horizontal category chips + a list of foods for
 /// the selected category. `_all` is a synthetic "Все" category.
@@ -24,9 +25,6 @@ class _MenuTabState extends State<MenuTab> {
   String? _error;
   List<Category> _categories = const [];
   List<Food> _foods = const [];
-
-  /// Selected category id; null = "Все".
-  String? _selectedId;
 
   @override
   void initState() {
@@ -57,11 +55,6 @@ class _MenuTabState extends State<MenuTab> {
     }
   }
 
-  List<Food> get _visibleFoods {
-    if (_selectedId == null) return _foods;
-    return _foods.where((f) => f.categoryId == _selectedId).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,8 +64,6 @@ class _MenuTabState extends State<MenuTab> {
         child: Column(
           children: [
             _header(),
-            if (!_isLoading && _error == null && _categories.isNotEmpty)
-              _categoryBar(),
             Expanded(child: _body()),
           ],
         ),
@@ -131,39 +122,6 @@ class _MenuTabState extends State<MenuTab> {
     );
   }
 
-  Widget _categoryBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.bg,
-        border: Border(bottom: BorderSide(color: AppColors.line)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      child: SizedBox(
-        height: 32,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: [
-            WaiterChip(
-              label: 'Все',
-              active: _selectedId == null,
-              onTap: () => setState(() => _selectedId = null),
-            ),
-            ..._categories.map(
-              (c) => Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: WaiterChip(
-                  label: c.title,
-                  active: _selectedId == c.id,
-                  onTap: () => setState(() => _selectedId = c.id),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _body() {
     if (_isLoading) {
       return const Center(
@@ -189,39 +147,12 @@ class _MenuTabState extends State<MenuTab> {
         ),
       );
     }
-
-    final foods = _visibleFoods;
-    if (foods.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        color: AppColors.red,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.6,
-              child: const WaiterEmpty(
-                icon: Icons.restaurant_menu,
-                title: 'Блюд нет',
-                sub: 'В этой категории пока пусто',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
+    return MenuAccordion(
+      categories: _categories,
+      foods: _foods,
       onRefresh: _load,
-      color: AppColors.red,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
-        itemCount: foods.length,
-        itemBuilder: (context, i) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _FoodRow(food: foods[i]),
-        ),
-      ),
+      listPadding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+      rowBuilder: (f) => _FoodRow(food: f),
     );
   }
 }
