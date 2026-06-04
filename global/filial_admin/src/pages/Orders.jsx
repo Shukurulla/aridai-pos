@@ -55,6 +55,8 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState("all");
+  const [shiftSel, setShiftSel] = useState("active"); // "active" | "all" | <shiftId>
+  const [shifts, setShifts] = useState([]);
   const [open, setOpen] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [acting, setActing] = useState(null); // cancel jarayonidagi order _id
@@ -64,7 +66,7 @@ export default function Orders() {
     if (firstLoad.current) setLoading(true);
     else setRefreshing(true);
     try {
-      const r = await api.orders(branchId);
+      const r = await api.orders(branchId, shiftSel);
       const list = (r.data || []).slice().sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       );
@@ -77,13 +79,32 @@ export default function Orders() {
       setRefreshing(false);
       firstLoad.current = false;
     }
-  }, [branchId]);
+  }, [branchId, shiftSel]);
 
   useEffect(() => {
     load();
     const t = setInterval(load, 8000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Smena ro'yxati (saralash tanlagichi uchun) — bir marta + 60s yangilanish
+  useEffect(() => {
+    let alive = true;
+    const loadShifts = () =>
+      api
+        .shifts(branchId)
+        .then((r) => {
+          if (!alive) return;
+          const list = (r.data || []).slice().sort(
+            (a, b) => new Date(b.openedAt) - new Date(a.openedAt),
+          );
+          setShifts(list);
+        })
+        .catch(() => {});
+    loadShifts();
+    const t = setInterval(loadShifts, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, [branchId]);
 
   // ===== Bekor qilish =====
   const cancelOrder = async (o) => {
@@ -175,6 +196,31 @@ export default function Orders() {
       </div>
 
       <div className="chips">
+        <select
+          value={shiftSel}
+          onChange={(e) => setShiftSel(e.target.value)}
+          title="Фильтр по смене"
+          style={{
+            padding: "9px 14px",
+            borderRadius: 999,
+            border: "1px solid var(--line2, #ddd7c8)",
+            background: "#fff",
+            color: "var(--ink, #1a1a1a)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            marginRight: 6,
+          }}
+        >
+          <option value="active">Текущая смена</option>
+          <option value="all">Все смены</option>
+          {shifts.map((s) => (
+            <option key={s._id} value={s._id}>
+              Смена №{s.shiftNumber ?? "—"} · {timeFmt(s.openedAt)}
+              {s.isActive ? " · текущая" : ""}
+            </option>
+          ))}
+        </select>
         {FILTERS.map((f) => (
           <button
             key={f.id}

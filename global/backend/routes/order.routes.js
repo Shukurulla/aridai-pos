@@ -275,6 +275,7 @@ router.post("/:id/items", authMiddleware, async (req, res) => {
 router.get("/all/:branchId", authMiddleware, async (req, res) => {
   try {
     const { branchId } = req.params;
+    const { shift } = req.query; // ixtiyoriy: <shiftId> | "active" | "all"(default)
 
     const findBranch = await branchesModel.findById(branchId);
     if (!findBranch)
@@ -282,7 +283,18 @@ router.get("/all/:branchId", authMiddleware, async (req, res) => {
         .status(404)
         .json({ status: "error", message: "Bunday filial topilmadi" });
 
-    const orders = await populateOrder(orderModel.find({ branch: branchId }));
+    const query = { branch: branchId };
+    // Smena bo'yicha saralash — yopilgan smenalar aralashmasligi uchun
+    if (shift && shift !== "all") {
+      if (shift === "active") {
+        const activeShift = await shiftModel.findOne({ branch: branchId, isActive: true });
+        query.shift = activeShift ? activeShift._id : null; // aktiv yo'q → bo'sh
+      } else {
+        query.shift = shift;
+      }
+    }
+
+    const orders = await populateOrder(orderModel.find(query));
 
     return res.status(200).json({ status: "success", data: orders });
   } catch (error) {

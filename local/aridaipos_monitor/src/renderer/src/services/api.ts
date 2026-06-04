@@ -1,14 +1,13 @@
 import { User, Restaurant, Order, DailySummary, PaymentType, PaymentSplit, SaboyItem, PartialPaymentResult, OrderItem, Shift, ExpenseCategory, Expense, Advance, Waiter } from "@/types";
 import { itemLineTotal } from "@/utils/hourly";
 
-// API manzili (priority bo'yicha):
-//  1) window.__API_BASE__ (preload orqali injekt qilingan bo'lsa),
-//  2) localStorage 'hub-url' (Settings ekranida foydalanuvchi kiritgan IP) —
-//     filialdagi BOSHQA pos-monitor LAN orqali asosiy POS dagi local-server
-//     hub'iga ulanishi uchun. Mas. "http://192.168.1.50:3011".
-//  3) Electron pos-monitor (window.pos bor) → o'zining lokal Local Server hub'i
-//     (localhost:3011): online → VPS'ga shaffof proksi, offline → lokal nusxa,
-//  4) web — public VPS sayti.
+// API manzili — POS monitor FAQAT LOCAL SERVER (aridaipos_server) ga ulanadi.
+// Global/VPS'ga TO'G'RIDAN ULANMAYDI (global bilan sync — local-server vazifasi;
+// online → local-server VPS'ga shaffof proksi, offline → lokal nusxa). Priority:
+//  1) window.__API_BASE__ (preload injekt — odatda berilmaydi),
+//  2) localStorage 'hub-url' (Settings — filialdagi BOSHQA PC'dagi local-server
+//     LAN IP, mas. "http://192.168.1.50:4561"),
+//  3) default: "http://localhost:4561" (shu PC'dagi local-server).
 function readStoredHubUrl(): string {
   if (typeof window === "undefined") return "";
   try {

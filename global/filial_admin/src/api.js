@@ -67,7 +67,8 @@ export const api = {
   tableDelete: (id) => request("DELETE", `/tables/${id}`),
 
   // POS orderlari (local→global sync push orqali) + filial ma'lumoti
-  orders: (branchId) => request("GET", `/orders/all/${branchId}`),
+  orders: (branchId, shift) =>
+    request("GET", `/orders/all/${branchId}${shift ? `?shift=${encodeURIComponent(shift)}` : ""}`),
   orderCancel: (id, body) => request("PATCH", `/orders/${id}/cancel`, body),
   orderItemCancel: (orderId, itemId, body) => request("PATCH", `/orders/${orderId}/items/${itemId}/cancel`, body),
   orderItemQty: (orderId, itemId, quantity) => request("PATCH", `/orders/${orderId}/items/${itemId}/quantity`, { quantity }),
