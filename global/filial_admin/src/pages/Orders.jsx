@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 import { Icon } from "../icons";
 
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU");
@@ -51,6 +52,7 @@ const FILTERS = [
 
 export default function Orders() {
   const { branchId } = useAuth();
+  const modal = useModal();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -108,27 +110,39 @@ export default function Orders() {
 
   // ===== Bekor qilish =====
   const cancelOrder = async (o) => {
-    const reason = prompt("Причина отмены заказа:", "");
+    const reason = await modal.prompt({
+      title: "Отмена заказа",
+      message: `Заказ ${o.receiptNumber || ""} будет отменён. Укажите причину (необязательно):`,
+      placeholder: "Причина отмены",
+      okText: "Отменить заказ",
+      danger: true,
+    });
     if (reason === null) return;
     setActing(o._id);
     try {
       await api.orderCancel(o._id, { reason: reason || undefined });
       await load();
     } catch (e) {
-      alert(e.message);
+      modal.alert(e.message);
     } finally {
       setActing(null);
     }
   };
   const cancelItem = async (o, item) => {
-    const reason = prompt(`Отменить «${item.foodName}»? Причина:`, "");
+    const reason = await modal.prompt({
+      title: "Отмена позиции",
+      message: `«${item.foodName}» будет отменена. Укажите причину (необязательно):`,
+      placeholder: "Причина",
+      okText: "Отменить позицию",
+      danger: true,
+    });
     if (reason === null) return;
     setActing(o._id);
     try {
       await api.orderItemCancel(o._id, item._id, { reason: reason || undefined });
       await load();
     } catch (e) {
-      alert(e.message);
+      modal.alert(e.message);
     } finally {
       setActing(null);
     }
@@ -142,7 +156,7 @@ export default function Orders() {
       await api.orderItemQty(o._id, item._id, q);
       await load();
     } catch (e) {
-      alert(e.message);
+      modal.alert(e.message);
     } finally {
       setActing(null);
     }

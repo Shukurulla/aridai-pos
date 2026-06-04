@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 
 export default function Categories() {
   const { branchId, restaurantId } = useAuth();
+  const dlg = useModal();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | {} (new) | category (edit)
@@ -52,12 +54,12 @@ export default function Categories() {
     }
   };
   const del = async (c) => {
-    if (!confirm(`Удалить категорию «${c.title}»?`)) return;
+    if (!(await dlg.confirm({ title: "Удалить категорию?", message: `«${c.title}» будет удалена.`, danger: true, okText: "Удалить" }))) return;
     try {
       await api.categoryDelete(c._id);
       await load();
     } catch (e) {
-      alert(e.message);
+      dlg.alert(e.message);
     }
   };
 

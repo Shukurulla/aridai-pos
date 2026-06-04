@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 import { Icon } from "../icons";
 
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU");
@@ -9,6 +10,7 @@ const shiftIdOf = (o) => (o.shift && (o.shift._id || o.shift)) ? String(o.shift.
 
 export default function Shifts() {
   const { branchId } = useAuth();
+  const modal = useModal();
   const [shifts, setShifts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +57,14 @@ export default function Shifts() {
   })();
 
   const openShift = async () => {
-    const cash = prompt("Открыть смену. Сумма в кассе на начало (₸):", "0");
+    const cash = await modal.prompt({
+      title: "Открыть смену",
+      message: "Сумма в кассе на начало смены:",
+      defaultValue: "0",
+      numeric: true,
+      suffix: "₸",
+      okText: "Открыть",
+    });
     if (cash === null) return;
     setBusy(true);
     setErr("");
@@ -71,7 +80,14 @@ export default function Shifts() {
   const closeShift = async (s) => {
     // Kutilayotgan kassa = ochilish naqdi + naqd tushum (default — tasdiqlaydi/o'zgartiradi)
     const expected = (s.openingCash || 0) + (liveTotals?.cashRevenue || 0);
-    const cash = prompt("Закрыть смену. Сумма в кассе на конец (₸):", String(expected));
+    const cash = await modal.prompt({
+      title: `Закрыть смену${s.shiftNumber ? ` №${s.shiftNumber}` : ""}`,
+      message: "Фактическая сумма в кассе на конец смены:",
+      defaultValue: String(expected),
+      numeric: true,
+      suffix: "₸",
+      okText: "Закрыть смену",
+    });
     if (cash === null) return;
     setBusy(true);
     setErr("");

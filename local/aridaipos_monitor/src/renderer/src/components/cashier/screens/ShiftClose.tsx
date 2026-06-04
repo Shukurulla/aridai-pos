@@ -13,16 +13,24 @@ export function ShiftCloseScreen({ ctx }: { ctx: ScreenCtx }) {
   const [counted, setCounted] = useState(expectedCash);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false); // tasdiqlash modali
+  const [errMsg, setErrMsg] = useState(''); // xato modali (Electron'da alert ishonchsiz)
   const diff = counted - expectedCash;
 
-  const close = async () => {
+  // "Закрыть смену" bosilganda — confirm() o'rniga modal (Electron'da confirm
+  // bloklanishi mumkin → смена yopilmay qolardi).
+  const requestClose = () => {
     if (!activeShift?._id) {
-      // Aktiv смена yo'q — yangi смена ochish ekraniga o'tamiz (qayta ochish)
       ctx.onShiftChanged(null);
       ctx.go('shiftOpen');
       return;
     }
-    if (!confirm('Закрыть смену? Это действие необратимо.')) return;
+    setConfirming(true);
+  };
+
+  const doClose = async () => {
+    setConfirming(false);
+    if (!activeShift?._id) return;
     setBusy(true);
     try {
       await api.closeShift(activeShift._id, counted, notes || undefined);
@@ -30,13 +38,12 @@ export function ShiftCloseScreen({ ctx }: { ctx: ScreenCtx }) {
       ctx.go('shiftOpen');
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
-      // Смена allaqachon yopilgan (boshqa terminal / scheduler / takroriy bosish)
-      // → bu xato emas: holatni tozalab, "ochish" ekraniga o'tamiz.
+      // Смена allaqachon yopilgan → xato emas: tozalab "ochish" ekraniga.
       if (/не найдена|not found|NOT_FOUND/i.test(msg)) {
         ctx.onShiftChanged(null);
         ctx.go('shiftOpen');
       } else {
-        alert(msg || 'Не удалось закрыть смену');
+        setErrMsg(msg || 'Не удалось закрыть смену');
       }
     } finally {
       setBusy(false);
@@ -237,11 +244,51 @@ export function ShiftCloseScreen({ ctx }: { ctx: ScreenCtx }) {
           />
 
           <div style={{ flex: 1 }} />
-          <CTA height={64} fontSize={20} onClick={close} color={T.cancelled} disabled={busy}>
+          <CTA height={64} fontSize={20} onClick={requestClose} color={T.cancelled} disabled={busy}>
             <NavIcon kind="check" color="#fff" /> {busy ? 'ЗАКРЫТИЕ…' : 'ЗАКРЫТЬ СМЕНУ'}
           </CTA>
         </div>
       </div>
+
+      {(confirming || errMsg) && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => { setConfirming(false); setErrMsg(''); }}
+        >
+          <div
+            style={{ background: T.surface, border: `1px solid ${T.border}`, padding: 28, maxWidth: 480, width: '90%', boxShadow: '0 24px 70px rgba(0,0,0,0.35)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {errMsg ? (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 12, color: T.cancelled }}>Ошибка</div>
+                <div style={{ fontSize: 16, color: T.textMuted, marginBottom: 24, lineHeight: 1.5 }}>{errMsg}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Btn onClick={() => setErrMsg('')} bg={T.panel} color={T.text} height={52}>Понятно</Btn>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 12 }}>
+                  Закрыть смену №{activeShift?.shiftNumber}?
+                </div>
+                <div style={{ fontSize: 16, color: T.textMuted, marginBottom: 24, lineHeight: 1.5 }}>
+                  Это действие необратимо. В кассе посчитано <b>{fmt(counted)}</b>
+                  {diff !== 0 ? ` (${diff > 0 ? 'излишек +' : 'недостача '}${fmt(diff)})` : ''}.
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <Btn onClick={() => setConfirming(false)} bg={T.panel} color={T.text} height={52}>
+                    Отмена
+                  </Btn>
+                  <Btn onClick={doClose} bg={T.cancelled} color="#fff" height={52}>
+                    Закрыть смену
+                  </Btn>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 import { Icon } from "../icons";
 
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU");
@@ -8,6 +9,7 @@ const empty = { name: "", category: "", price: "", isHourly: false, description:
 
 export default function Foods({ onBranchName }) {
   const { branchId, restaurantId } = useAuth();
+  const dlg = useModal();
   const [foods, setFoods] = useState([]);
   const [cats, setCats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,12 +117,12 @@ export default function Foods({ onBranchName }) {
     }
   };
   const del = async (f) => {
-    if (!confirm(`Удалить «${f.name}»?`)) return;
+    if (!(await dlg.confirm({ title: "Удалить блюдо?", message: `«${f.name}» будет удалено.`, danger: true, okText: "Удалить" }))) return;
     try {
       await api.foodDelete(f._id);
       await load();
     } catch (e) {
-      alert(e.message);
+      dlg.alert(e.message);
     }
   };
 
@@ -166,7 +168,7 @@ export default function Foods({ onBranchName }) {
         fail++;
       }
     }
-    alert(`Импорт: добавлено ${ok}, ошибок ${fail}`);
+    dlg.alert({ title: "Импорт завершён", message: `Добавлено: ${ok}\nОшибок: ${fail}` });
     await load();
   };
 

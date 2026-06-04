@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 import { api } from "../api";
 import { Icon } from "../icons";
 import Orders from "./Orders";
@@ -26,6 +27,7 @@ const ROLE_RU = { branch_admin: "Администратор филиала", adm
 
 export default function Shell() {
   const { user, branchId, logout } = useAuth();
+  const dlg = useModal();
   const [page, setPage] = useState("orders");
   const [branchName, setBranchName] = useState("");
 
@@ -85,8 +87,8 @@ export default function Shell() {
             </span>
             <button
               className="btn btn-sm ghost icon-btn"
-              onClick={() => {
-                if (confirm("Выйти из системы?")) logout();
+              onClick={async () => {
+                if (await dlg.confirm({ title: "Выйти из системы?", message: "Вы выйдете из панели администратора.", okText: "Выйти" })) logout();
               }}
             >
               <Icon name="logout" size={16} /> Выйти

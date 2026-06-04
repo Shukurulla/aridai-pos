@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useModal } from "../modal";
 
 const emptyT = { number: "", title: "", type: "table" };
 
 export default function Tables() {
   const { branchId, restaurantId } = useAuth();
+  const dlg = useModal();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -63,12 +65,12 @@ export default function Tables() {
     }
   };
   const del = async (t) => {
-    if (!confirm(`Удалить «${t.title}»?`)) return;
+    if (!(await dlg.confirm({ title: "Удалить стол?", message: `«${t.title}» будет удалён.`, danger: true, okText: "Удалить" }))) return;
     try {
       await api.tableDelete(t._id);
       await load();
     } catch (e) {
-      alert(e.message);
+      dlg.alert(e.message);
     }
   };
 
