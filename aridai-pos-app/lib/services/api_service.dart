@@ -317,6 +317,126 @@ class ApiService {
     }
   }
 
+  // ─── Branch-admin: menu management (categories) ────────────────────
+
+  /// Create a category — `POST /categories/create` with `{ title }`. Branch +
+  /// restaurantId are derived server-side from the admin token (we also send
+  /// them when known). Throws an [Exception] with a readable (Russian) message.
+  Future<Category> createCategory(String title) async {
+    final body = <String, dynamic>{
+      'title': title,
+      if (_currentUser?.branchId != null) 'branch': _currentUser!.branchId,
+      if (_currentUser?.restaurantId != null)
+        'restaurantId': _currentUser!.restaurantId,
+    };
+    final data = await _writeJson('post', '/categories/create', body);
+    return Category.fromJson(data);
+  }
+
+  /// Rename a category — `PUT /categories/<id>` with `{ title }`.
+  Future<Category> updateCategory(String id, String title) async {
+    final data = await _writeJson('put', '/categories/$id', {'title': title});
+    return Category.fromJson(data);
+  }
+
+  /// Delete a category — `DELETE /categories/<id>`.
+  Future<void> deleteCategory(String id) => _deletePath('/categories/$id');
+
+  // ─── Branch-admin: menu management (foods) ─────────────────────────
+
+  /// Create a menu item — `POST /foods/create` (multipart). [imagePath] is an
+  /// optional local file to upload as `image`. Branch + restaurantId are
+  /// derived server-side from the admin token (also sent when known). Throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<Food> createFood({
+    required String name,
+    required num price,
+    required String categoryId,
+    String? description,
+    bool isHourly = false,
+    String? imagePath,
+  }) async {
+    final fields = <String, dynamic>{
+      'name': name,
+      'price': price,
+      'category': categoryId,
+      'isHourly': isHourly,
+      if (description != null && description.isNotEmpty)
+        'description': description,
+      if (_currentUser?.branchId != null) 'branch': _currentUser!.branchId,
+      if (_currentUser?.restaurantId != null)
+        'restaurantId': _currentUser!.restaurantId,
+    };
+    final data = await _writeMultipart('post', '/foods/create', fields, imagePath);
+    return Food.fromJson(data);
+  }
+
+  /// Update a menu item — `PUT /foods/<id>` (multipart). Only the [imagePath]
+  /// is uploaded when provided (otherwise the existing image is kept). Throws
+  /// an [Exception] with a readable (Russian) message on any failure.
+  Future<Food> updateFood(
+    String id, {
+    required String name,
+    required num price,
+    required String categoryId,
+    String? description,
+    bool isHourly = false,
+    String? imagePath,
+  }) async {
+    final fields = <String, dynamic>{
+      'name': name,
+      'price': price,
+      'category': categoryId,
+      'isHourly': isHourly,
+      'description': description ?? '',
+    };
+    final data = await _writeMultipart('put', '/foods/$id', fields, imagePath);
+    return Food.fromJson(data);
+  }
+
+  /// Delete a menu item — `DELETE /foods/<id>`.
+  Future<void> deleteFood(String id) => _deletePath('/foods/$id');
+
+  // ─── Branch-admin: menu management (tables) ────────────────────────
+
+  /// Create a table/cabin — `POST /tables/create` with `{ number, title, type }`.
+  /// Branch + restaurantId are derived server-side from the admin token. Throws
+  /// an [Exception] with a readable (Russian) message on any failure.
+  Future<TableModel> createTable({
+    required int number,
+    required String title,
+    required String type,
+  }) async {
+    final body = <String, dynamic>{
+      'number': number,
+      'title': title,
+      'type': type,
+      if (_currentUser?.branchId != null) 'branch': _currentUser!.branchId,
+      if (_currentUser?.restaurantId != null)
+        'restaurantId': _currentUser!.restaurantId,
+    };
+    final data = await _writeJson('post', '/tables/create', body);
+    return TableModel.fromJson(data);
+  }
+
+  /// Update a table/cabin — `PUT /tables/<id>` with `{ number, title, type }`.
+  Future<TableModel> updateTable(
+    String id, {
+    required int number,
+    required String title,
+    required String type,
+  }) async {
+    final data = await _writeJson('put', '/tables/$id', {
+      'number': number,
+      'title': title,
+      'type': type,
+    });
+    return TableModel.fromJson(data);
+  }
+
+  /// Delete a table/cabin — `DELETE /tables/<id>`.
+  Future<void> deleteTable(String id) => _deletePath('/tables/$id');
+
   // ─── Branch-admin: orders ──────────────────────────────────────────
 
   /// Cancel an order — `PATCH /orders/<id>/cancel` with `{ reason }`. Throws an
@@ -533,6 +653,66 @@ class ApiService {
       }
       throw Exception(
         data is Map ? _messageFromBody(data) : 'Некорректный ответ сервера',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) throw Exception(_messageFromBody(data));
+      throw Exception(_networkMessage(e));
+    }
+  }
+
+  /// Send a multipart write ([method] is `post` or `put`) to [path] and return
+  /// the unwrapped `data` map. [fields] are sent as text parts; when
+  /// [imagePath] is a non-empty local path it is attached as the `image` file
+  /// part. Throws an [Exception] with a readable (Russian) message on any
+  /// failure.
+  Future<Map<String, dynamic>> _writeMultipart(
+    String method,
+    String path,
+    Map<String, dynamic> fields,
+    String? imagePath,
+  ) async {
+    try {
+      final formMap = <String, dynamic>{};
+      fields.forEach((k, v) {
+        // FormData har bir qiymatni string qiladi — bool'larni aniq yozamiz.
+        formMap[k] = v is bool ? v.toString() : v;
+      });
+      if (imagePath != null && imagePath.isNotEmpty) {
+        formMap['image'] = await MultipartFile.fromFile(
+          imagePath,
+          filename: imagePath.split('/').last,
+        );
+      }
+      final form = FormData.fromMap(formMap);
+      final response = method == 'put'
+          ? await _dio.put(path, data: form)
+          : await _dio.post(path, data: form);
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        final payload = data['data'];
+        if (payload is Map) return payload.cast<String, dynamic>();
+        return const {};
+      }
+      throw Exception(
+        data is Map ? _messageFromBody(data) : 'Некорректный ответ сервера',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) throw Exception(_messageFromBody(data));
+      throw Exception(_networkMessage(e));
+    }
+  }
+
+  /// Send a `DELETE [path]` and resolve on a `success` response. Throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<void> _deletePath(String path) async {
+    try {
+      final response = await _dio.delete(path);
+      final body = response.data;
+      if (body is Map && body['status'] == 'success') return;
+      throw Exception(
+        body is Map ? _messageFromBody(body) : 'Некорректный ответ сервера',
       );
     } on DioException catch (e) {
       final data = e.response?.data;

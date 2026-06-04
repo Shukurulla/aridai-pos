@@ -7,7 +7,11 @@ const router = express.Router();
 
 router.post("/create", authMiddleware, async (req, res) => {
   try {
-    const { title, branch } = req.body;
+    const { title } = req.body;
+    // branch/restaurantId — body'dan YOKI token'dan (mobil admin uchun ishonchli)
+    const branch = req.body.branch || String(req.userData?.branch || "");
+    const restaurantId =
+      req.body.restaurantId || req.userData?.restaurantId || undefined;
 
     const findBranch = await branchesModel.findById(branch);
     if (!findBranch)
@@ -21,7 +25,11 @@ router.post("/create", authMiddleware, async (req, res) => {
         .status(400)
         .json({ status: "error", message: "Bunday category mavjud" });
 
-    const category = await categoryModel.create(req.body);
+    const category = await categoryModel.create({
+      ...req.body,
+      branch,
+      restaurantId,
+    });
 
     return res.status(200).json({ status: "success", data: category });
   } catch (error) {

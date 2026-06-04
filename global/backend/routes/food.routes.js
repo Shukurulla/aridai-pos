@@ -9,7 +9,11 @@ const router = express.Router();
 
 router.post("/create", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    const { name, category, description, price, branch } = req.body;
+    const { category } = req.body;
+    // branch/restaurantId — body'dan YOKI token'dan (mobil admin uchun ishonchli)
+    const branch = req.body.branch || String(req.userData?.branch || "");
+    const restaurantId =
+      req.body.restaurantId || req.userData?.restaurantId || undefined;
 
     const findBranch = await branchesModel.findById(branch);
     if (!findBranch)
@@ -26,6 +30,8 @@ router.post("/create", authMiddleware, upload.single("image"), async (req, res) 
 
     const food = await foodModel.create({
       ...req.body,
+      branch,
+      restaurantId,
       image: req.file ? `/uploads/${req.file.filename}` : req.body.image,
     });
 

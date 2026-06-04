@@ -14,6 +14,7 @@ class Food {
   final bool isHourly;
   final String? categoryId;
   final String? categoryTitle;
+  final String? description;
 
   const Food({
     required this.id,
@@ -23,11 +24,13 @@ class Food {
     this.isHourly = false,
     this.categoryId,
     this.categoryTitle,
+    this.description,
   });
 
   factory Food.fromJson(Map<String, dynamic> json) {
     final cat = _CategoryRef.parse(json['category']);
     final rawImage = json['image']?.toString();
+    final rawDesc = json['description']?.toString();
 
     return Food(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
@@ -37,6 +40,7 @@ class Food {
       isHourly: json['isHourly'] == true,
       categoryId: cat.id,
       categoryTitle: cat.title,
+      description: (rawDesc == null || rawDesc.isEmpty) ? null : rawDesc,
     );
   }
 

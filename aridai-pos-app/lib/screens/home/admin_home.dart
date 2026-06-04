@@ -5,6 +5,7 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../admin/admin_menu_tab.dart';
 import '../admin/admin_orders_tab.dart';
 import '../admin/admin_reports_tab.dart';
 import '../admin/admin_shift_tab.dart';
@@ -28,6 +29,7 @@ class _AdminHomeState extends State<AdminHome> {
 
   static const _tabs = <Widget>[
     AdminOrdersTab(),
+    AdminMenuTab(),
     AdminStaffTab(),
     AdminReportsTab(),
     AdminShiftTab(),
@@ -131,6 +133,11 @@ class _BottomBar extends StatelessWidget {
       icon: Icons.receipt_long_outlined,
       active: Icons.receipt_long_rounded,
       label: 'Заказы'
+    ),
+    (
+      icon: Icons.restaurant_menu_outlined,
+      active: Icons.restaurant_menu_rounded,
+      label: 'Меню'
     ),
     (
       icon: Icons.group_outlined,
