@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/user.dart';
+import '../../services/branch_status_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
@@ -44,6 +45,23 @@ class _WaiterHomeState extends State<WaiterHome> {
   }
 
   Future<void> _newOrder() async {
+    // Branch offline → ordering must go through the POS (see offline-rejim.md).
+    if (!BranchStatusService.instance.online.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Филиал офлайн — оформляйте заказы через POS',
+            style: sansStyle(
+                size: 13, weight: FontWeight.w500, color: Colors.white),
+          ),
+          backgroundColor: AppColors.warn,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const CreateOrderScreen()),
     );

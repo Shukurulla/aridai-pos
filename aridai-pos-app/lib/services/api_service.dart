@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/branch_status.dart';
 import '../models/category.dart';
 import '../models/food.dart';
 import '../models/kitchen_item.dart';
@@ -569,6 +570,20 @@ class ApiService {
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList(growable: false);
+  }
+
+  /// The current branch's offline-status — `GET /branches/<branchId>/status`.
+  /// Returns null on any failure (no branch, network error) so the caller can
+  /// keep its last known state instead of falsely flipping to offline.
+  Future<BranchStatus?> getBranchStatus() async {
+    final branchId = _currentUser?.branchId;
+    if (branchId == null || branchId.isEmpty) return null;
+    try {
+      final data = await _getMap('/branches/$branchId/status');
+      return BranchStatus.fromJson(data);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Resolve a (possibly relative) upload [path] into a full image URL.

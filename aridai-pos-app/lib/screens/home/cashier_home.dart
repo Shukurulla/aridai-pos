@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../../widgets/offline_banner.dart';
 import '../cashier/payment_page.dart';
 import '../shared/shift_panel.dart';
 
@@ -140,6 +141,7 @@ class _CashierHomeState extends State<CashierHome> {
         child: Column(
           children: [
             _header(),
+            const OfflineBanner(),
             _segmentBar(),
             Expanded(
               child: IndexedStack(

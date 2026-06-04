@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../../widgets/offline_banner.dart';
 
 /// Home for the cook role: the live kitchen queue.
 ///
@@ -152,6 +153,7 @@ class _CookHomeState extends State<CookHome> {
         child: Column(
           children: [
             _header(),
+            const OfflineBanner(),
             _filters(),
             Expanded(child: _body()),
           ],

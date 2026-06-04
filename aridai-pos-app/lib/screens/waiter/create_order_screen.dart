@@ -7,8 +7,10 @@ import '../../models/food.dart';
 import '../../models/order.dart';
 import '../../models/table_model.dart';
 import '../../services/api_service.dart';
+import '../../services/branch_status_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../../widgets/offline_banner.dart';
 import 'menu_accordion.dart';
 
 /// Order creation flow. Pick an order type (Зал / Собой), a table (for Зал),
@@ -70,7 +72,23 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.initState();
     _table = widget.table;
     _load();
+    // Rebuild when the branch goes offline/online so the banner + submit button
+    // reflect it live.
+    BranchStatusService.instance.online.addListener(_onOnlineChanged);
   }
+
+  @override
+  void dispose() {
+    BranchStatusService.instance.online.removeListener(_onOnlineChanged);
+    super.dispose();
+  }
+
+  void _onOnlineChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// True when the branch's local POS backend is offline — ordering is blocked.
+  bool get _offline => !BranchStatusService.instance.online.value;
 
   Future<void> _load() async {
     if (!_isLoading) setState(() => _isLoading = true);
@@ -151,11 +169,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   bool get _canSubmit {
     if (_submitting || _cart.isEmpty) return false;
+    if (_offline) return false; // branch offline — order via POS
     if (!_isAddMode && _orderType == 'dineIn' && _table == null) return false;
     return true;
   }
 
   Future<void> _submit() async {
+    if (_offline) {
+      _snack('Филиал офлайн — оформляйте заказы через POS', AppColors.warn);
+      return;
+    }
     if (!_canSubmit) return;
     setState(() => _submitting = true);
     try {
@@ -232,6 +255,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         child: Column(
           children: [
             _topBar(),
+            const OfflineBanner(),
             if (!_isLoading && _error == null && !_isAddMode) _typeAndTable(),
             Expanded(child: _body()),
             if (!_isLoading && _error == null) _cartBar(),

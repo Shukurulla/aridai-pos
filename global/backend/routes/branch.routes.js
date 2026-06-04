@@ -76,6 +76,35 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// ===== Filial offline-status (mobile offline-awareness) =====
+// online = lokal backend yo'q (null heartbeat → global orqali online) YOKI
+// heartbeat 45s ichida. Stale (>45s) → offline (lokal backend sync to'xtagan).
+router.get("/:id/status", authMiddleware, async (req, res) => {
+  try {
+    const branch = await branchesModel.findById(req.params.id);
+    if (!branch) return res.status(404).json({ status: "error", code: "BRANCH_NOT_FOUND" });
+    if (String(branch.restaurant) !== String(req.userPayload.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_BOUNDARY_VIOLATION" });
+    }
+    const OFFLINE_MS = 45000;
+    const hb = branch.lastHeartbeatAt ? branch.lastHeartbeatAt.getTime() : null;
+    const secondsSince = hb != null ? Math.round((Date.now() - hb) / 1000) : null;
+    const online = hb == null || Date.now() - hb < OFFLINE_MS;
+    return res.status(200).json({
+      status: "success",
+      data: {
+        online,
+        currentMode: branch.currentMode || "unknown",
+        lastHeartbeatAt: branch.lastHeartbeatAt || null,
+        secondsSinceHeartbeat: secondsSince,
+        posServerIp: branch.posServerIp || null,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
 // ===== Filial yangilash (owner) =====
 router.put("/:id", restoranMiddleware, async (req, res) => {
   try {

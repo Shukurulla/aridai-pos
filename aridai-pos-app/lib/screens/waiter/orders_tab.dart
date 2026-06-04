@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../../widgets/offline_banner.dart';
 import 'order_detail_screen.dart';
 
 /// Read-only list of THIS waiter's orders (newest first). Live-refreshes on
@@ -96,6 +97,7 @@ class OrdersTabState extends State<OrdersTab> {
         child: Column(
           children: [
             _header(),
+            const OfflineBanner(),
             Expanded(child: _body()),
           ],
         ),

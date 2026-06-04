@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'screens/login_screen.dart';
 import 'screens/role_router.dart';
 import 'services/api_service.dart';
+import 'services/branch_status_service.dart';
 import 'services/push_service.dart';
 import 'utils/app_colors.dart';
 
@@ -89,21 +90,38 @@ class _AuthWrapperState extends State<AuthWrapper> {
       _authed = authed && ApiService.instance.currentUser != null;
       _loading = false;
     });
-    if (_authed) PushService.instance.init(); // qurilma tokenini ro'yxatga olamiz
+    if (_authed) {
+      PushService.instance.init(); // qurilma tokenini ro'yxatga olamiz
+      _startBranchStatus();
+    }
   }
 
   void _onLogin() {
     setState(() {
       _authed = ApiService.instance.currentUser != null;
     });
-    if (_authed) PushService.instance.init();
+    if (_authed) {
+      PushService.instance.init();
+      _startBranchStatus();
+    }
   }
 
   Future<void> _logout() async {
+    BranchStatusService.instance.stop();
     await PushService.instance.dispose(); // tokenni o'chiramiz (token hali bor)
     await ApiService.instance.logout();
     if (!mounted) return;
     setState(() => _authed = false);
+  }
+
+  /// Offline-awareness polling — only for branch-bound roles (waiter / cook /
+  /// cashier / admin). Owner / system_admin have no single-branch context.
+  void _startBranchStatus() {
+    const branchRoles = {'waiter', 'cook', 'cashier', 'branch_admin'};
+    final role = ApiService.instance.currentUser?.role ?? '';
+    if (branchRoles.contains(role)) {
+      BranchStatusService.instance.start();
+    }
   }
 
   @override

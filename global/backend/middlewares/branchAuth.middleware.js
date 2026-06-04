@@ -22,6 +22,16 @@ const branchAuthMiddleware = async (req, res, next) => {
     }
     req.branch = branch;
     req.branchPayload = payload;
+    // Heartbeat — filial lokal backend'i "tirik" ekanini global'ga bildiradi
+    // (offline-awareness). 10s throttle: har 2s sync so'rovida emas, kamida
+    // 10s'da bir yoziladi. Fire-and-forget — javobni sekinlashtirmaydi.
+    const now = Date.now();
+    const last = branch.lastHeartbeatAt ? branch.lastHeartbeatAt.getTime() : 0;
+    if (now - last > 10000) {
+      branchesModel
+        .updateOne({ _id: branch._id }, { $set: { lastHeartbeatAt: new Date() } })
+        .catch(() => {});
+    }
     next();
   } catch {
     return res.status(401).json({ status: "error", code: "TOKEN_INVALID" });
