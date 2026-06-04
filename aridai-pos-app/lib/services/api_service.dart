@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/branch_status.dart';
 import '../models/category.dart';
@@ -192,10 +193,17 @@ class ApiService {
     String? tableId,
     required List<Map<String, dynamic>> items,
     required String orderType,
+    String? clientId,
+    bool possiz = false,
   }) async {
+    // clientId (UUID) — idempotency: a timed-out submit that actually succeeded
+    // (or an offline outbox re-send) never creates a duplicate. The same id is
+    // reused on retry of a queued order; otherwise a fresh one is minted here.
     final body = <String, dynamic>{
       'items': items,
       'orderType': orderType,
+      'clientId': clientId ?? const Uuid().v4(),
+      if (possiz) 'possiz': true,
       if (tableId != null && tableId.isNotEmpty) 'tableId': tableId,
     };
     final data = await _writeJson('post', '/orders/place', body);

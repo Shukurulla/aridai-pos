@@ -167,6 +167,11 @@ const orderSchema = new mongoose.Schema(
     },
     qrOrderRequestId: { type: mongoose.Schema.Types.ObjectId, ref: "qr_order_request", default: null },
 
+    // Possiz/offline idempotency — client tomonda yaratilgan UUID.
+    // Outbox qayta-sync qilganda yoki submit timeout bo'lib aslida o'tib
+    // ketganda DUBLIKAT order yaratilmasligi uchun (obsidian/.../possiz-rejim.md).
+    clientId: { type: String, default: null },
+
     // Pre-bill / chek (obsidian/07-nozik-nuqtalar/pre-bill-chek-print.md)
     prebillPrintedAt: { type: Date },
     prebillPrintCount: { type: Number, default: 0 },
@@ -206,6 +211,11 @@ orderSchema.index({ shift: 1, paymentStatus: 1 });
 orderSchema.index({ "waiter.waiterId": 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, createdAt: -1 });
 orderSchema.index({ branch: 1, receiptNumber: 1 }, { unique: true });
+// Possiz/offline idempotency — faqat haqiqiy (string) clientId'lar unique
+orderSchema.index(
+  { branch: 1, clientId: 1 },
+  { unique: true, partialFilterExpression: { clientId: { $type: "string" } } },
+);
 orderSchema.index({ "cashback.clientPhone": 1 }, { sparse: true });
 orderSchema.index({ "kaspi.invoiceId": 1 }, { sparse: true });
 orderSchema.index({ parentOrderId: 1 }, { sparse: true });

@@ -122,7 +122,19 @@ router.post("/place", authMiddleware, async (req, res) => {
   try {
     const branch = req.userData.branch;
     const restaurantId = req.userData.restaurantId;
-    const { tableId, items, orderType, note, guestCount } = req.body;
+    const { tableId, items, orderType, note, guestCount, clientId, possiz } = req.body;
+
+    // Idempotency — possiz/offline outbox qayta-yuborsa (yoki submit timeout
+    // bo'lib aslida o'tib ketsa) DUBLIKAT order yaratmaymiz: o'shani qaytaramiz.
+    if (clientId) {
+      const dup = await orderModel.findOne({ branch, clientId });
+      if (dup) {
+        const populatedDup = await populateOrder(orderModel.findById(dup._id));
+        return res
+          .status(200)
+          .json({ status: "success", data: populatedDup, idempotent: true });
+      }
+    }
 
     const shift = await shiftModel.findOne({ branch, isActive: true });
     if (!shift) return res.status(400).json({ status: "error", message: "Сначала откройте смену" });
@@ -184,7 +196,9 @@ router.post("/place", authMiddleware, async (req, res) => {
       foods,
       paymentStatus: "pending",
       totalPrice: 0,
-      source: "waiter_mobile",
+      source: possiz ? "possiz_mobile" : "waiter_mobile",
+      createdInMode: possiz ? "possiz" : undefined,
+      clientId: clientId || null,
       note: note || null,
       guestCount: guestCount || undefined,
       syncStatus: "pending",
