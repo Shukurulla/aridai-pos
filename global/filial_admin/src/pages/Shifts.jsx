@@ -78,11 +78,36 @@ export default function Shifts() {
     }
   };
   const closeShift = async (s) => {
-    // Kutilayotgan kassa = ochilish naqdi + naqd tushum (default — tasdiqlaydi/o'zgartiradi)
-    const expected = (s.openingCash || 0) + (liveTotals?.cashRevenue || 0);
+    // Shu smenaning orderlaridan jonli hisob
+    const mine = orders.filter((o) => shiftIdOf(o) === String(s._id) && !o.isCancel);
+    const openCount = mine.filter((o) => o.paymentStatus !== "paid").length;
+
+    // Ochiq (to'lanmagan) orderlar bo'lsa — yopishga ruxsat yo'q
+    if (openCount > 0) {
+      await modal.alert({
+        title: "Смену нельзя закрыть",
+        message: `Есть открытые заказы: ${openCount}.\nЗавершите оплату или отмените их, затем закройте смену.`,
+      });
+      return;
+    }
+
+    const paid = mine.filter((o) => o.paymentStatus === "paid");
+    const revenue = paid.reduce((acc, o) => acc + (o.totalPrice || 0), 0);
+    const cashRevenue = paid.reduce((acc, o) => {
+      if (o.paymentMethod === "mixed") return acc + (o.mixed?.cash || 0);
+      if (o.paymentMethod === "cash") return acc + (o.totalPrice || 0);
+      return acc;
+    }, 0);
+    // Kutilayotgan kassa = ochilish naqdi + naqd tushum
+    const expected = (s.openingCash || 0) + cashRevenue;
+
     const cash = await modal.prompt({
       title: `Закрыть смену${s.shiftNumber ? ` №${s.shiftNumber}` : ""}`,
-      message: "Фактическая сумма в кассе на конец смены:",
+      message:
+        `Выручка за смену: ${fmt(revenue)} ₸\n` +
+        `Наличными: ${fmt(cashRevenue)} ₸ · Касса на старте: ${fmt(s.openingCash)} ₸\n` +
+        `Ожидается в кассе: ${fmt(expected)} ₸\n\n` +
+        `Пересчитайте фактическую сумму наличных в кассе:`,
       defaultValue: String(expected),
       numeric: true,
       suffix: "₸",
@@ -95,7 +120,9 @@ export default function Shifts() {
       await api.shiftClose(s._id, { closingCash: cash });
       await load();
     } catch (e) {
-      setErr(e.message);
+      const msg = e.message || "Не удалось закрыть смену";
+      await modal.alert({ title: "Ошибка", message: msg });
+      setErr(msg);
     } finally {
       setBusy(false);
     }

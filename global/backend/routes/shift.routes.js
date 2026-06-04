@@ -56,6 +56,19 @@ router.put("/:id/close", authMiddleware, async (req, res) => {
     if (!shift.isActive) return res.status(400).json({ status: "error", message: "Смена уже закрыта" });
 
     const orders = await orderModel.find({ shift: id });
+
+    // Ochiq (to'lanmagan, bekor qilinmagan) orderlar bo'lsa — smena yopilmaydi.
+    // Aks holda tushum/kassa noto'g'ri hisoblanadi.
+    const openOrders = orders.filter((o) => !o.isCancel && o.paymentStatus !== "paid").length;
+    if (openOrders > 0) {
+      return res.status(400).json({
+        status: "error",
+        code: "OPEN_ORDERS",
+        openOrders,
+        message: `Нельзя закрыть смену: есть открытые заказы (${openOrders}). Завершите оплату или отмените их.`,
+      });
+    }
+
     const sum = (arr, f) => arr.reduce((s, o) => s + (f(o) || 0), 0);
     const paid = orders.filter((o) => !o.isCancel && o.paymentStatus === "paid");
     const direct = (m) => sum(paid.filter((o) => o.paymentMethod === m), (o) => o.totalPrice || 0);

@@ -77,6 +77,23 @@ router.post("/:id/close", async (req, res) => {
     const shift = await shiftModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!shift) return res.status(404).json({ success: false, error: { message: "Смена не найдена" } });
 
+    // Ochiq (to'lanmagan) orderlar bo'lsa — smena yopilmaydi (tushum/kassa noto'g'ri bo'ladi)
+    const openOrders = await orderModel.countDocuments({
+      shift: shift._id,
+      isCancel: { $ne: true },
+      paymentStatus: { $ne: "paid" },
+    });
+    if (openOrders > 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "OPEN_ORDERS",
+          openOrders,
+          message: `Нельзя закрыть смену: есть открытые заказы (${openOrders}). Завершите оплату или отмените их.`,
+        },
+      });
+    }
+
     const paid = await orderModel.find({ shift: shift._id, paymentStatus: "paid", isCancel: { $ne: true } });
     const t = { ordersCount: paid.length, revenue: 0, cashRevenue: 0, cardRevenue: 0, transferRevenue: 0, discountTotal: 0, serviceTotal: 0 };
     for (const o of paid) {
