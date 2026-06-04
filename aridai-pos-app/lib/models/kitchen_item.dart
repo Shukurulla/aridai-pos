@@ -40,6 +40,7 @@ class KitchenItem {
   bool get isDineIn => orderType == 'dineIn';
   bool get isWaiting => cookingStatus == 'waiting';
   bool get isCooking => cookingStatus == 'cooking';
+  bool get isReady => cookingStatus == 'ready';
 
   factory KitchenItem.fromJson(Map<String, dynamic> json) {
     return KitchenItem(

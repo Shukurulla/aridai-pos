@@ -289,11 +289,20 @@ router.get("/kitchen/:branchId", authMiddleware, async (req, res) => {
     const aCats = (req.userData.assignedCategories || []).map(String);
     const filterAssigned = isCook && (aFoods.length > 0 || aCats.length > 0);
 
+    // includeReady=1 → "ready" (tayyor, hali served emas) itemlarni ham qaytarish
+    // (cook handoff ko'rinishi). Default — faqat waiting/cooking (eski xatti-harakat).
+    const includeReady = ["1", "true", "yes"].includes(
+      String(req.query.includeReady || "").toLowerCase(),
+    );
+    const allowed = includeReady
+      ? ["waiting", "cooking", "ready"]
+      : ["waiting", "cooking"];
+
     const items = [];
     for (const o of orders) {
       for (const f of o.foods || []) {
         const cs = f.cookingStatus || "waiting";
-        if (cs !== "waiting" && cs !== "cooking") continue; // tayyor/served — navbatdan chiqdi
+        if (!allowed.includes(cs)) continue; // navbatdan tashqari (served / boshqa)
         if (effQty(f) <= 0) continue; // bekor qilingan item
         const foodId = f.foodId?._id ? String(f.foodId._id) : String(f.foodId || "");
         const catId = f.foodId?.category ? String(f.foodId.category) : null;
@@ -415,6 +424,37 @@ router.patch("/:id/cancel", authMiddleware, async (req, res) => {
     await order.save();
 
     emitToBranch(order.branch, "orders:changed", { orderId: String(order._id) });
+    const populated = await populateOrder(orderModel.findById(id));
+    return res.status(200).json({ status: "success", data: populated });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// ===== Счёт so'rovi — ofitsiant kassirdan chek so'raydi (requested: true/false) =====
+router.patch("/:id/request-check", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requested = req.body.requested !== false; // default — true
+    const order = await orderModel.findById(id);
+    if (!order)
+      return res.status(404).json({ status: "error", message: "Bunday order topilmadi" });
+    if (String(order.restaurantId) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
+    if (order.isCancel || order.paymentStatus === "paid") {
+      return res.status(400).json({ status: "error", message: "Заказ уже закрыт" });
+    }
+    order.checkRequest = {
+      requested,
+      at: requested ? new Date() : null,
+      byName: requested ? req.userData.name || null : null,
+    };
+    await order.save();
+    emitToBranch(order.branch, "orders:changed", {
+      orderId: String(order._id),
+      kind: "check-request",
+    });
     const populated = await populateOrder(orderModel.findById(id));
     return res.status(200).json({ status: "success", data: populated });
   } catch (error) {

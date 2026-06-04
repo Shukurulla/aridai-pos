@@ -26,7 +26,7 @@ class CookHome extends StatefulWidget {
 }
 
 /// Which segment of the queue is on screen.
-enum _Filter { waiting, cooking }
+enum _Filter { waiting, cooking, ready }
 
 class _CookHomeState extends State<CookHome> {
   final ApiService _api = ApiService.instance;
@@ -61,7 +61,7 @@ class _CookHomeState extends State<CookHome> {
   Future<void> _load({bool silent = false}) async {
     if (!silent && !_isLoading) setState(() => _isLoading = true);
     try {
-      final items = await _api.getKitchen()
+      final items = await _api.getKitchen(includeReady: true)
         ..sort((a, b) {
           final ad = a.createdAt;
           final bd = b.createdAt;
@@ -127,9 +127,21 @@ class _CookHomeState extends State<CookHome> {
       _items.where((i) => i.isWaiting).toList(growable: false);
   List<KitchenItem> get _cooking =>
       _items.where((i) => i.isCooking).toList(growable: false);
+  List<KitchenItem> get _ready =>
+      _items.where((i) => i.isReady).toList(growable: false);
 
-  List<KitchenItem> get _visible =>
-      _filter == _Filter.waiting ? _waiting : _cooking;
+  List<KitchenItem> get _visible => switch (_filter) {
+        _Filter.waiting => _waiting,
+        _Filter.cooking => _cooking,
+        _Filter.ready => _ready,
+      };
+
+  /// The next cooking stage when the card's action is tapped.
+  String _nextStatus(KitchenItem item) {
+    if (item.isWaiting) return 'cooking';
+    if (item.isCooking) return 'ready';
+    return 'served'; // ready → served (Выдано — отдано официанту)
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,6 +229,13 @@ class _CookHomeState extends State<CookHome> {
             count: _cooking.length,
             onTap: () => setState(() => _filter = _Filter.cooking),
           ),
+          const SizedBox(width: 8),
+          WaiterChip(
+            label: 'Готово',
+            active: _filter == _Filter.ready,
+            count: _ready.length,
+            onTap: () => setState(() => _filter = _Filter.ready),
+          ),
         ],
       ),
     );
@@ -239,18 +258,24 @@ class _CookHomeState extends State<CookHome> {
     }
     final list = _visible;
     if (list.isEmpty) {
-      final waiting = _filter == _Filter.waiting;
-      return _refreshable(
-        WaiterEmpty(
-          icon: waiting
-              ? Icons.ramen_dining_outlined
-              : Icons.outdoor_grill_outlined,
-          title: waiting ? 'Очередь пуста' : 'Нет блюд в работе',
-          sub: waiting
-              ? 'Новые блюда появятся здесь'
-              : 'Начните готовить блюдо из очереди',
-        ),
-      );
+      final (IconData icon, String title, String sub) = switch (_filter) {
+        _Filter.waiting => (
+            Icons.ramen_dining_outlined,
+            'Очередь пуста',
+            'Новые блюда появятся здесь'
+          ),
+        _Filter.cooking => (
+            Icons.outdoor_grill_outlined,
+            'Нет блюд в работе',
+            'Начните готовить блюдо из очереди'
+          ),
+        _Filter.ready => (
+            Icons.room_service_outlined,
+            'Нет готовых блюд',
+            'Готовые блюда ждут выдачи здесь'
+          ),
+      };
+      return _refreshable(WaiterEmpty(icon: icon, title: title, sub: sub));
     }
     return RefreshIndicator(
       onRefresh: _load,
@@ -263,10 +288,7 @@ class _CookHomeState extends State<CookHome> {
           child: _KitchenCard(
             item: list[i],
             busy: _busy.contains(list[i].itemId),
-            onAction: () => _advance(
-              list[i],
-              list[i].isWaiting ? 'cooking' : 'ready',
-            ),
+            onAction: () => _advance(list[i], _nextStatus(list[i])),
           ),
         ),
       ),
@@ -325,10 +347,37 @@ class _KitchenCard extends StatelessWidget {
     return r.isEmpty ? '#—' : '#$r';
   }
 
+  /// Per-stage visuals: accent colour, status-chip label/background and the
+  /// action-button caption.
+  ({Color fg, Color bg, String chip, String action}) get _stage {
+    if (item.isWaiting) {
+      return (
+        fg: AppColors.red,
+        bg: AppColors.redSoft,
+        chip: 'Новое',
+        action: 'Начать готовить',
+      );
+    }
+    if (item.isCooking) {
+      return (
+        fg: AppColors.ok,
+        bg: AppColors.okSoft,
+        chip: 'Готовится',
+        action: 'Готово',
+      );
+    }
+    return (
+      fg: AppColors.infoColor,
+      bg: AppColors.infoSoft,
+      chip: 'Готово',
+      action: 'Выдано',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final waiting = item.isWaiting;
-    final accent = waiting ? AppColors.red : AppColors.ok;
+    final s = _stage;
+    final accent = s.fg;
 
     return Container(
       decoration: BoxDecoration(
@@ -375,9 +424,9 @@ class _KitchenCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 StatusChip(
-                  label: waiting ? 'Новое' : 'Готовится',
+                  label: s.chip,
                   fg: accent,
-                  bg: waiting ? AppColors.redSoft : AppColors.okSoft,
+                  bg: s.bg,
                 ),
               ],
             ),
@@ -448,7 +497,7 @@ class _KitchenCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 _ActionButton(
-                  label: waiting ? 'Начать готовить' : 'Готово',
+                  label: s.action,
                   color: accent,
                   busy: busy,
                   onTap: onAction,

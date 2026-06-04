@@ -28,6 +28,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   final ApiService _api = ApiService.instance;
 
   late OrderModel _order = widget.order;
+  bool _checkBusy = false;
 
   Future<void> _refresh() async {
     try {
@@ -52,6 +53,42 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ),
     );
     if (added == true) await _refresh();
+  }
+
+  /// Ask the cashier for the bill (or cancel the request).
+  /// `PATCH /orders/<id>/request-check` — re-fetches so the new flag reflects.
+  Future<void> _toggleCheck() async {
+    if (_checkBusy) return;
+    final next = !_order.checkRequested;
+    setState(() => _checkBusy = true);
+    try {
+      await _api.requestCheck(_order.id, next);
+      await _refresh();
+      if (mounted) {
+        _snack(next ? 'Счёт запрошен у кассира' : 'Запрос счёта отменён');
+      }
+    } catch (e) {
+      if (mounted) _snack(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _checkBusy = false);
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style:
+              sansStyle(size: 13, weight: FontWeight.w500, color: Colors.white),
+        ),
+        backgroundColor: AppColors.ink,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   ({String label, Color fg, Color bg}) get _status {
@@ -147,8 +184,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  // ─── Bottom "+ Блюдо" bar (open orders only) ────────────────────────────
+  // ─── Bottom action bar (open orders only): «Счёт» + «+ Блюдо» ────────────
   Widget _addBar() {
+    final requested = _order.checkRequested;
     return Container(
       color: AppColors.bg,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -160,44 +198,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           child: Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: Material(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: _addDishes,
-                child: Container(
-                  height: 52,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: AppColors.red,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.add,
-                            size: 16, color: Colors.white),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'БЛЮДО',
-                        style: GoogleFonts.ibmPlexSans(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
+            child: Row(
+              children: [
+                Expanded(
+                  child: _BarButton(
+                    label: requested ? 'СЧЁТ ЗАПРОШЕН' : 'ЗАПРОСИТЬ СЧЁТ',
+                    icon: requested
+                        ? Icons.check_circle_outline
+                        : Icons.receipt_long_outlined,
+                    color: AppColors.red,
+                    filled: requested,
+                    busy: _checkBusy,
+                    onTap: _toggleCheck,
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _BarButton(
+                    label: 'БЛЮДО',
+                    icon: Icons.add,
+                    color: AppColors.ink,
+                    filled: true,
+                    onTap: _addDishes,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -521,6 +546,78 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         Text(label, style: sansStyle(size: 12, color: AppColors.mute)),
         Text(value, style: numStyle(size: 12, color: AppColors.mute)),
       ],
+    );
+  }
+}
+
+/// Bottom action-bar button — filled (white on [color]) or outlined (color on
+/// surface). Shows a spinner + disables itself while [busy].
+class _BarButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool filled;
+  final bool busy;
+  final VoidCallback onTap;
+  const _BarButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.filled = false,
+    this.busy = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = filled ? Colors.white : color;
+    return Material(
+      color: filled ? color : AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: busy ? null : onTap,
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: filled
+              ? null
+              : BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: 0.5)),
+                ),
+          child: busy
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(fg),
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 18, color: fg),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.ibmPlexSans(
+                          color: fg,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 }

@@ -172,6 +172,13 @@ const orderSchema = new mongoose.Schema(
     prebillPrintCount: { type: Number, default: 0 },
     printCount: { type: Number, default: 0 },
 
+    // Счёт so'rovi — ofitsiant kassirdan chek so'raydi (mobil)
+    checkRequest: {
+      requested: { type: Boolean, default: false },
+      at: { type: Date, default: null },
+      byName: { type: String, default: null },
+    },
+
     // Qo'shimcha
     note: { type: String, default: null },
     guestCount: { type: Number },

@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
 import '../cashier/payment_page.dart';
+import '../shared/shift_panel.dart';
 
 /// Home for the cashier role: the list of open (unpaid) orders to settle.
 ///
@@ -31,9 +32,11 @@ class _CashierHomeState extends State<CashierHome> {
 
   static const Duration _refreshEvery = Duration(seconds: 10);
 
+  int _segment = 0; // 0 = К оплате, 1 = Смена
   bool _isLoading = true;
   String? _error;
   List<OrderModel> _orders = const [];
+  final GlobalKey<ShiftPanelState> _shiftKey = GlobalKey<ShiftPanelState>();
 
   Timer? _timer;
 
@@ -54,21 +57,26 @@ class _CashierHomeState extends State<CashierHome> {
   bool _isOpen(OrderModel o) =>
       !o.isCancel && o.paymentStatus == 'pending' && o.totalPrice > 0;
 
+  /// Bill-requested orders bubble to the top; otherwise newest first.
+  int _sortOpen(OrderModel a, OrderModel b) {
+    if (a.checkRequested != b.checkRequested) {
+      return a.checkRequested ? -1 : 1;
+    }
+    final ad = a.createdAt;
+    final bd = b.createdAt;
+    if (ad == null && bd == null) return 0;
+    if (ad == null) return 1;
+    if (bd == null) return -1;
+    return bd.compareTo(ad);
+  }
+
   /// Fetch orders and keep only the open ones, newest first. [silent] keeps the
   /// current list visible (used by the auto-refresh Timer) so it never flickers.
   Future<void> _load({bool silent = false}) async {
     if (!silent && !_isLoading) setState(() => _isLoading = true);
     try {
       final all = await _api.getOrders();
-      final open = all.where(_isOpen).toList()
-        ..sort((a, b) {
-          final ad = a.createdAt;
-          final bd = b.createdAt;
-          if (ad == null && bd == null) return 0;
-          if (ad == null) return 1;
-          if (bd == null) return -1;
-          return bd.compareTo(ad); // newest first
-        });
+      final open = all.where(_isOpen).toList()..sort(_sortOpen);
       if (!mounted) return;
       setState(() {
         _orders = open;
@@ -132,11 +140,55 @@ class _CashierHomeState extends State<CashierHome> {
         child: Column(
           children: [
             _header(),
-            if (!_isLoading && _error == null && _orders.isNotEmpty) _summary(),
-            Expanded(child: _body()),
+            _segmentBar(),
+            Expanded(
+              child: IndexedStack(
+                index: _segment,
+                children: [
+                  _ordersView(),
+                  ShiftPanel(key: _shiftKey),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _segmentBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.bg,
+        border: Border(bottom: BorderSide(color: AppColors.line)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      child: Row(
+        children: [
+          WaiterChip(
+            label: 'К оплате',
+            active: _segment == 0,
+            count: _orders.length,
+            onTap: () => setState(() => _segment = 0),
+          ),
+          const SizedBox(width: 8),
+          WaiterChip(
+            label: 'Смена',
+            active: _segment == 1,
+            onTap: () => setState(() => _segment = 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "К оплате" segment — summary strip + open-orders list.
+  Widget _ordersView() {
+    return Column(
+      children: [
+        if (!_isLoading && _error == null && _orders.isNotEmpty) _summary(),
+        Expanded(child: _body()),
+      ],
     );
   }
 
@@ -362,9 +414,12 @@ class _OpenOrderCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                left: BorderSide(color: AppColors.warn, width: 3),
+                left: BorderSide(
+                  color: order.checkRequested ? AppColors.red : AppColors.warn,
+                  width: 3,
+                ),
               ),
             ),
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -414,11 +469,18 @@ class _OpenOrderCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          const StatusChip(
-                            label: 'К оплате',
-                            fg: AppColors.warn,
-                            bg: AppColors.warnSoft,
-                          ),
+                          if (order.checkRequested)
+                            const StatusChip(
+                              label: 'Счёт запрошен',
+                              fg: AppColors.red,
+                              bg: AppColors.redSoft,
+                            )
+                          else
+                            const StatusChip(
+                              label: 'К оплате',
+                              fg: AppColors.warn,
+                              bg: AppColors.warnSoft,
+                            ),
                           const SizedBox(width: 8),
                           const Icon(Icons.access_time,
                               size: 11, color: AppColors.mute),

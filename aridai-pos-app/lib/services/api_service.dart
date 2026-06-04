@@ -236,8 +236,11 @@ class ApiService {
   /// filters to the cook's assigned foods and only returns items still
   /// needing cooking. Throws an [Exception] with a readable (Russian)
   /// message on any failure.
-  Future<List<KitchenItem>> getKitchen() async {
-    final data = await _getBranchList('/orders/kitchen');
+  Future<List<KitchenItem>> getKitchen({bool includeReady = false}) async {
+    final data = await _getBranchList(
+      '/orders/kitchen',
+      query: includeReady ? {'includeReady': '1'} : null,
+    );
     return data
         .whereType<Map>()
         .map((e) => KitchenItem.fromJson(e.cast<String, dynamic>()))
@@ -439,6 +442,28 @@ class ApiService {
 
   // ─── Branch-admin: orders ──────────────────────────────────────────
 
+  /// Request (or cancel) the bill for an order.
+  /// `PATCH /orders/<id>/request-check` with `{ requested }`. The waiter calls
+  /// this so the cashier sees the order flagged «Счёт запрошен». Throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<void> requestCheck(String orderId, bool requested) async {
+    try {
+      final response = await _dio.patch(
+        '/orders/$orderId/request-check',
+        data: {'requested': requested},
+      );
+      final body = response.data;
+      if (body is Map && body['status'] == 'success') return;
+      throw Exception(
+        body is Map ? _messageFromBody(body) : 'Некорректный ответ сервера',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) throw Exception(_messageFromBody(data));
+      throw Exception(_networkMessage(e));
+    }
+  }
+
   /// Cancel an order — `PATCH /orders/<id>/cancel` with `{ reason }`. Throws an
   /// [Exception] with a readable (Russian) message on any failure.
   Future<void> cancelOrder(String id, String reason) async {
@@ -558,13 +583,17 @@ class ApiService {
 
   /// GET `<path>/<branchId>` and return the `data` list. Throws an
   /// [Exception] with a readable (Russian) message on any failure.
-  Future<List<dynamic>> _getBranchList(String path) async {
+  Future<List<dynamic>> _getBranchList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
     final branchId = _currentUser?.branchId;
     if (branchId == null || branchId.isEmpty) {
       throw Exception('Филиал не определён');
     }
     try {
-      final response = await _dio.get('$path/$branchId');
+      final response =
+          await _dio.get('$path/$branchId', queryParameters: query);
       final body = response.data;
       if (body is Map && body['status'] == 'success') {
         final data = body['data'];

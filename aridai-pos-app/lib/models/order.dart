@@ -57,6 +57,10 @@ class OrderModel {
   final bool isCancel;
   final DateTime? createdAt;
 
+  /// Waiter requested the bill (счёт) — the cashier highlights such orders.
+  final bool checkRequested;
+  final String? checkRequestedByName;
+
   const OrderModel({
     required this.id,
     required this.receiptNumber,
@@ -71,6 +75,8 @@ class OrderModel {
     this.paymentStatus = 'pending',
     this.isCancel = false,
     this.createdAt,
+    this.checkRequested = false,
+    this.checkRequestedByName,
   });
 
   bool get isDineIn => orderType == 'dineIn';
@@ -79,6 +85,17 @@ class OrderModel {
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     final table = _TableRef.parse(json['table']);
     final waiter = _WaiterRef.parse(json['waiter']);
+
+    final cr = json['checkRequest'];
+    bool checkReq = false;
+    String? checkBy;
+    if (cr is Map) {
+      checkReq = cr['requested'] == true;
+      final by = cr['byName'];
+      checkBy = (by == null || by.toString().trim().isEmpty)
+          ? null
+          : by.toString();
+    }
 
     final foodsRaw = json['foods'];
     final items = <OrderItem>[];
@@ -104,6 +121,8 @@ class OrderModel {
       paymentStatus: (json['paymentStatus'] ?? 'pending').toString(),
       isCancel: json['isCancel'] == true,
       createdAt: _toDate(json['createdAt']),
+      checkRequested: checkReq,
+      checkRequestedByName: checkBy,
     );
   }
 
