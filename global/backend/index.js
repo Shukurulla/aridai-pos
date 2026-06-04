@@ -38,7 +38,12 @@ app.get("/", (req, res) =>
   res.status(200).json({ status: "success", message: "API ishlayapti" }),
 );
 app.get("/api/health", (req, res) =>
-  res.status(200).json({ status: "ok", env: config.env, uptime: process.uptime() }),
+  res.status(200).json({
+    status: "ok",
+    service: "aridai-pos-backend",
+    env: config.env,
+    uptime: process.uptime(),
+  }),
 );
 
 // ===== Rate limiting =====
