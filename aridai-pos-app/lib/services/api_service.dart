@@ -216,6 +216,20 @@ class ApiService {
     return OrderModel.fromJson(data);
   }
 
+  // ─── FCM push token ────────────────────────────────────────────────
+
+  /// Qurilma FCM tokenini backend'ga ro'yxatdan o'tkazadi (`POST /users/me/push-token`).
+  Future<void> registerPushToken(String token) async {
+    await _writeJson('post', '/users/me/push-token', {'token': token});
+  }
+
+  /// Qurilma FCM tokenini o'chiradi (logout) — `DELETE /users/me/push-token`.
+  Future<void> unregisterPushToken(String token) async {
+    try {
+      await _dio.delete('/users/me/push-token', data: {'token': token});
+    } catch (_) {/* offline/xato — e'tibor bermaymiz */}
+  }
+
   // ─── Cook kitchen queue ────────────────────────────────────────────
 
   /// The cook's kitchen queue for the current branch. The server already

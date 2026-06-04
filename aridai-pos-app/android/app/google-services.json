@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "739071661677",
+    "project_id": "aridai-pos-d5d62",
+    "storage_bucket": "aridai-pos-d5d62.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:739071661677:android:6f0e04b7cc71a329be5164",
+        "android_client_info": {
+          "package_name": "com.imax.aridaipos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpw8FKsyuGGLrZWcRfYPFto8Zfq6UhYI8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

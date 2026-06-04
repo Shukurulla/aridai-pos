@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/role_router.dart';
 import 'services/api_service.dart';
+import 'services/push_service.dart';
 import 'utils/app_colors.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // FCM (push) — Firebase sozlanmagan bo'lsa ham ilova ishlaydi (guard).
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
+  } catch (_) {/* Firebase config yo'q — push o'chiq, ilova davom etadi */}
   await ApiService.instance.loadSession();
   runApp(const AridaiPosApp());
 }
@@ -81,15 +89,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
       _authed = authed && ApiService.instance.currentUser != null;
       _loading = false;
     });
+    if (_authed) PushService.instance.init(); // qurilma tokenini ro'yxatga olamiz
   }
 
   void _onLogin() {
     setState(() {
       _authed = ApiService.instance.currentUser != null;
     });
+    if (_authed) PushService.instance.init();
   }
 
   Future<void> _logout() async {
+    await PushService.instance.dispose(); // tokenni o'chiramiz (token hali bor)
     await ApiService.instance.logout();
     if (!mounted) return;
     setState(() => _authed = false);
