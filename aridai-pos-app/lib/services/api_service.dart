@@ -49,13 +49,14 @@ class ApiService {
   /// emulator replace `localhost` with the dev machine's LAN IP
   /// (e.g. `http://192.168.1.10:4560/api`), since `localhost` resolves to the
   /// device itself, not your computer.
-  static const String _defaultApi = 'http://localhost:4560/api';
+  /// Default backend — the deployed VPS, so a freshly installed APK works out of
+  /// the box. Override from the login "Сервер" dialog for local dev
+  /// (`http://10.0.2.2:4560` on the Android emulator, or a LAN IP).
+  static const String _defaultApi = 'http://37.60.226.97:4560/api';
   static const String _serverKey = 'server_base';
 
   /// Current API base — **configurable** from the login screen "Сервер" dialog.
-  /// Dev default points at the host machine. On a real device `localhost` is the
-  /// phone itself, so set the dev machine's LAN IP (e.g. `http://192.168.1.10:4560`)
-  /// or the deployed server before logging in.
+  /// Defaults to the deployed VPS; persisted once changed.
   static String _apiBase = _defaultApi;
   static String get baseUrl => _apiBase;
 
