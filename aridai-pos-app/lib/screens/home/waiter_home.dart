@@ -45,8 +45,10 @@ class _WaiterHomeState extends State<WaiterHome> {
   }
 
   Future<void> _newOrder() async {
-    // Branch offline → ordering must go through the POS (see offline-rejim.md).
-    if (!BranchStatusService.instance.online.value) {
+    // Blocked only when offline AND not in possiz mode. In possiz, mobile
+    // ordering works (orders go to the global backend); see possiz-rejim.md.
+    final svc = BranchStatusService.instance;
+    if (!svc.online.value && !svc.possiz.value) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

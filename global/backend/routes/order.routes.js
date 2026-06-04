@@ -13,7 +13,10 @@ import { pushAsync } from "../utils/push.js";
 const router = express.Router();
 
 // Filialdagi cook'larga "Новый заказ" push (assigned filtr — bo'sh bo'lsa hammasiga)
-async function notifyCooks(branch, order) {
+async function notifyCooks(branch, order, possizActive) {
+  // Cook'larga push FAQAT possiz rejimda (svet yo'q — POS monitor ishlamaydi).
+  // Online/offline'da cook orderlarni POS monitordan ko'radi — telefonga push yo'q.
+  if (!possizActive) return;
   try {
     const cooks = await usersModel
       .find({ branch, role: "cook", isActive: true, "pushTokens.0": { $exists: true } })
@@ -207,7 +210,9 @@ router.post("/place", authMiddleware, async (req, res) => {
     const order = await orderModel.create(orderData);
 
     emitToBranch(branch, "orders:changed", { orderId: String(order._id), kind: "created" });
-    notifyCooks(branch, order); // FCM: cook'larga "Новый заказ"
+    // Cook push FAQAT possiz rejimda (branch flag YOKI order possiz deb belgilangan)
+    const branchDoc = await branchesModel.findById(branch).select("possiz");
+    notifyCooks(branch, order, !!branchDoc?.possiz?.active || !!possiz);
 
     const populated = await populateOrder(orderModel.findById(order._id));
     return res.status(200).json({ status: "success", data: populated });

@@ -94,11 +94,55 @@ router.get("/:id/status", authMiddleware, async (req, res) => {
       status: "success",
       data: {
         online,
+        possiz: !!branch.possiz?.active,
         currentMode: branch.currentMode || "unknown",
         lastHeartbeatAt: branch.lastHeartbeatAt || null,
         secondsSinceHeartbeat: secondsSince,
         posServerIp: branch.posServerIp || null,
       },
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// ===== Possiz rejimni yoqish/o'chirish (branch_admin yoki owner) =====
+// Svet yo'q paytda QO'LDA yoqiladi. Yoqilganda: waiter mobile order bera oladi +
+// cook'larga FCM push keladi. obsidian/.../possiz-rejim.md
+router.patch("/:id/possiz", authMiddleware, async (req, res) => {
+  try {
+    const branch = await branchesModel.findById(req.params.id);
+    if (!branch) return res.status(404).json({ status: "error", code: "BRANCH_NOT_FOUND" });
+    if (String(branch.restaurant) !== String(req.userPayload.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_BOUNDARY_VIOLATION" });
+    }
+    const role = req.userData.role;
+    const isOwner = role === "owner" || role === "system_admin";
+    const isBranchAdmin =
+      role === "branch_admin" && String(req.userData.branch) === String(branch._id);
+    if (!isOwner && !isBranchAdmin) {
+      return res.status(403).json({ status: "error", code: "FORBIDDEN", message: "Faqat admin yoki owner" });
+    }
+    const active = req.body.active === true || req.body.active === "true";
+    branch.possiz = {
+      active,
+      activatedBy: active ? req.userData._id : null,
+      activatedAt: active ? new Date() : null,
+    };
+    if (active) {
+      branch.currentMode = "possiz";
+      branch.modeChangedAt = new Date();
+    }
+    await branch.save();
+    await audit.log({
+      kind: active ? "possiz_activated" : "possiz_deactivated",
+      restaurantId: branch.restaurant,
+      branchId: branch._id,
+      actor: { type: "user", id: req.userData._id, role },
+    });
+    return res.status(200).json({
+      status: "success",
+      data: { possiz: branch.possiz, currentMode: branch.currentMode },
     });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });

@@ -23,6 +23,9 @@ class BranchStatusService {
   /// True while the branch is reachable/online. Defaults to true.
   final ValueNotifier<bool> online = ValueNotifier<bool>(true);
 
+  /// True while the branch is in admin-activated possiz (emergency) mode.
+  final ValueNotifier<bool> possiz = ValueNotifier<bool>(false);
+
   Timer? _timer;
 
   /// Begin polling. Safe to call repeatedly (restarts the timer).
@@ -32,19 +35,27 @@ class BranchStatusService {
     _timer = Timer.periodic(_interval, (_) => _poll());
   }
 
-  /// Stop polling. [reset] returns the notifier to the optimistic "online"
-  /// default (used on logout).
+  /// Stop polling. [reset] returns the notifiers to their optimistic defaults
+  /// (used on logout).
   void stop({bool reset = true}) {
     _timer?.cancel();
     _timer = null;
-    if (reset) online.value = true;
+    if (reset) {
+      online.value = true;
+      possiz.value = false;
+    }
   }
+
+  /// Force an immediate refresh (e.g. right after the admin toggles possiz).
+  Future<void> refresh() => _poll();
+
+  /// Apply a known possiz state instantly (optimistic, after a local toggle).
+  void setPossizLocal(bool value) => possiz.value = value;
 
   Future<void> _poll() async {
     final status = await ApiService.instance.getBranchStatus();
     if (status == null) return; // network/unknown — keep last known state
-    if (online.value != status.online) {
-      online.value = status.online;
-    }
+    if (online.value != status.online) online.value = status.online;
+    if (possiz.value != status.possiz) possiz.value = status.possiz;
   }
 }

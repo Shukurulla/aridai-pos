@@ -37,6 +37,16 @@ const branchSchema = new mongoose.Schema(
     outboxPending: { type: Number, default: 0 },
     lastHeartbeatAt: { type: Date },
 
+    // Possiz rejim — svet yo'q paytda admin telefondan QO'LDA yoqadi.
+    // Yoqilganda: waiter mobile order bera oladi (offline blok bekor) va
+    // cook'larga FCM notification keladi (online/offline'da kelmaydi —
+    // cook POS monitordan ko'radi). obsidian/02-arxitektura/rejimlar/possiz-rejim.md
+    possiz: {
+      active: { type: Boolean, default: false },
+      activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+      activatedAt: { type: Date, default: null },
+    },
+
     geo: {
       country: String,
       city: String,

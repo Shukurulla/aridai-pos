@@ -6,12 +6,18 @@
 /// through the global API, so the mobile app keeps working.
 class BranchStatus {
   final bool online;
+
+  /// Possiz (emergency, no-power) mode — admin-activated. When true, waiter
+  /// mobiles may place orders even while the branch is offline, and cooks get
+  /// FCM notifications.
+  final bool possiz;
   final String currentMode; // online | offline | possiz | unknown | …
   final int? secondsSinceHeartbeat;
   final String? posServerIp;
 
   const BranchStatus({
     required this.online,
+    this.possiz = false,
     this.currentMode = 'unknown',
     this.secondsSinceHeartbeat,
     this.posServerIp,
@@ -24,6 +30,7 @@ class BranchStatus {
       // Default to online when the field is missing — never block ordering on
       // an ambiguous response.
       online: json['online'] != false,
+      possiz: json['possiz'] == true,
       currentMode: (json['currentMode'] ?? 'unknown').toString(),
       secondsSinceHeartbeat: _toIntOrNull(json['secondsSinceHeartbeat']),
       posServerIp: _toStringOrNull(json['posServerIp']),

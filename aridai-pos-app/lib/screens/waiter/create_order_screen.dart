@@ -72,23 +72,29 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.initState();
     _table = widget.table;
     _load();
-    // Rebuild when the branch goes offline/online so the banner + submit button
-    // reflect it live.
-    BranchStatusService.instance.online.addListener(_onOnlineChanged);
+    // Rebuild when the branch's online/possiz state changes so the banner +
+    // submit button reflect it live.
+    BranchStatusService.instance.online.addListener(_onStatusChanged);
+    BranchStatusService.instance.possiz.addListener(_onStatusChanged);
   }
 
   @override
   void dispose() {
-    BranchStatusService.instance.online.removeListener(_onOnlineChanged);
+    BranchStatusService.instance.online.removeListener(_onStatusChanged);
+    BranchStatusService.instance.possiz.removeListener(_onStatusChanged);
     super.dispose();
   }
 
-  void _onOnlineChanged() {
+  void _onStatusChanged() {
     if (mounted) setState(() {});
   }
 
-  /// True when the branch's local POS backend is offline — ordering is blocked.
-  bool get _offline => !BranchStatusService.instance.online.value;
+  /// Ordering is blocked only when the branch is offline AND not in possiz mode.
+  /// In possiz mode the global backend accepts mobile orders, so ordering works.
+  bool get _blockOrdering {
+    final svc = BranchStatusService.instance;
+    return !svc.online.value && !svc.possiz.value;
+  }
 
   Future<void> _load() async {
     if (!_isLoading) setState(() => _isLoading = true);
@@ -169,13 +175,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   bool get _canSubmit {
     if (_submitting || _cart.isEmpty) return false;
-    if (_offline) return false; // branch offline — order via POS
+    if (_blockOrdering) return false; // offline & not possiz — order via POS
     if (!_isAddMode && _orderType == 'dineIn' && _table == null) return false;
     return true;
   }
 
   Future<void> _submit() async {
-    if (_offline) {
+    if (_blockOrdering) {
       _snack('Филиал офлайн — оформляйте заказы через POS', AppColors.warn);
       return;
     }
@@ -194,6 +200,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           tableId: _orderType == 'dineIn' ? _table?.id : null,
           items: items,
           orderType: _orderType,
+          possiz: BranchStatusService.instance.possiz.value,
         );
         if (!mounted) return;
         _snack('Заказ создан', AppColors.ok);

@@ -594,6 +594,38 @@ class ApiService {
     }
   }
 
+  /// Toggle possiz (emergency) mode for the current branch —
+  /// `PATCH /branches/<branchId>/possiz` with `{ active }`. Allowed for the
+  /// branch admin or owner. Returns the resulting active state. Throws an
+  /// [Exception] with a readable (Russian) message on any failure.
+  Future<bool> setPossiz(bool active) async {
+    final branchId = _currentUser?.branchId;
+    if (branchId == null || branchId.isEmpty) {
+      throw Exception('Филиал не определён');
+    }
+    try {
+      final response = await _dio.patch(
+        '/branches/$branchId/possiz',
+        data: {'active': active},
+      );
+      final body = response.data;
+      if (body is Map && body['status'] == 'success') {
+        final data = body['data'];
+        if (data is Map && data['possiz'] is Map) {
+          return data['possiz']['active'] == true;
+        }
+        return active;
+      }
+      throw Exception(
+        body is Map ? _messageFromBody(body) : 'Некорректный ответ сервера',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) throw Exception(_messageFromBody(data));
+      throw Exception(_networkMessage(e));
+    }
+  }
+
   /// Resolve a (possibly relative) upload [path] into a full image URL.
   /// Returns null when empty. Already-absolute URLs are returned unchanged.
   static String? imageUrl(String? path) {

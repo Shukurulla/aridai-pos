@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../utils/app_colors.dart';
+import '../../widgets/possiz_control.dart';
 import '../shared/shift_panel.dart';
 import 'admin_common.dart';
 
@@ -36,6 +37,7 @@ class _AdminShiftTabState extends State<AdminShiftTab> {
                 onTap: () => _panelKey.currentState?.load(),
               ),
             ),
+            const PossizControl(),
             Expanded(
               child: ShiftPanel(
                 key: _panelKey,

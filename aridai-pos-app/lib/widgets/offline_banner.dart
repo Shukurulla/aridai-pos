@@ -4,48 +4,68 @@ import '../services/branch_status_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/waiter_design.dart';
 
-/// Thin amber bar shown when the branch is offline (its local POS backend
-/// stopped syncing). Collapses to nothing while online. Listens to
-/// [BranchStatusService] so it appears/disappears automatically.
+/// Status bar shown under a screen header:
+/// • **Possiz** (red) — admin-activated emergency mode: ordering works through
+///   the phone, cooks get notifications.
+/// • **Offline** (amber) — the branch lost its POS sync: order via POS instead.
+/// • Online — collapses to nothing.
 ///
-/// Place it directly under a screen's header.
+/// Listens to [BranchStatusService] so it appears/updates automatically.
 class OfflineBanner extends StatelessWidget {
-  const OfflineBanner({super.key, this.message});
-
-  /// Optional override for the banner text.
-  final String? message;
+  const OfflineBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: BranchStatusService.instance.online,
-      builder: (context, online, _) {
-        if (online) return const SizedBox.shrink();
-        return Container(
-          width: double.infinity,
-          decoration: const BoxDecoration(
-            color: AppColors.warnSoft,
-            border: Border(bottom: BorderSide(color: AppColors.line)),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Row(
-            children: [
-              const Icon(Icons.cloud_off_outlined, size: 16, color: AppColors.warn),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  message ?? 'Филиал офлайн — оформляйте заказы через POS',
-                  style: sansStyle(
-                    size: 12,
-                    weight: FontWeight.w500,
-                    color: AppColors.warn,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
+    final svc = BranchStatusService.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([svc.online, svc.possiz]),
+      builder: (context, _) {
+        if (svc.possiz.value) {
+          return _bar(
+            bg: AppColors.redSoft,
+            fg: AppColors.red,
+            icon: Icons.bolt_rounded,
+            text: 'Режим ПОССИЗ — заказы принимаются через телефон',
+          );
+        }
+        if (!svc.online.value) {
+          return _bar(
+            bg: AppColors.warnSoft,
+            fg: AppColors.warn,
+            icon: Icons.cloud_off_outlined,
+            text: 'Филиал офлайн — оформляйте заказы через POS',
+          );
+        }
+        return const SizedBox.shrink();
       },
+    );
+  }
+
+  Widget _bar({
+    required Color bg,
+    required Color fg,
+    required IconData icon,
+    required String text,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bg,
+        border: const Border(bottom: BorderSide(color: AppColors.line)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: sansStyle(size: 12, weight: FontWeight.w500, color: fg),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
