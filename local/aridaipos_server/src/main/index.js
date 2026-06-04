@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "../../.env") });
 
 const PORT = Number(process.env.LOCAL_PORT) || 4561;
-const GLOBAL_URL = process.env.GLOBAL_URL || "http://localhost:4560";
+const GLOBAL_URL = process.env.GLOBAL_URL || "https://api.asadbek-durdana.uz";
 const isDev = !app.isPackaged;
 const DEV_URL = "http://localhost:5273";
 

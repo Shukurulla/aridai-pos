@@ -18,8 +18,8 @@ export const config = {
   // Lokal MongoDB — haqiqiy mahsulotda Windows Service (127.0.0.1:27017, faqat lokal)
   mongoUrl: process.env.LOCAL_MONGO_URL || "mongodb://127.0.0.1:27017/aridai_local",
 
-  // Global VPS (sync uchun)
-  globalUrl: process.env.GLOBAL_URL || "http://localhost:4560",
+  // Global VPS (sync uchun) — deploy qilingan production backend
+  globalUrl: process.env.GLOBAL_URL || "https://api.asadbek-durdana.uz",
 
   // Filial identifikatsiyasi (installer/admin kiritadi)
   branchId: process.env.BRANCH_ID || null,
