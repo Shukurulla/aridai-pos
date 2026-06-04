@@ -13,6 +13,10 @@ yarn-error.log*
 *.pem
 *.key
 secrets/
+# Firebase service account (MAXFIY — push jo'natish kaliti)
+*firebase-adminsdk*.json
+.firebase-service-account.json
+**/.firebase-service-account.json
 
 # Build artefaktlar
 dist/

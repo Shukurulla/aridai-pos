@@ -1,8 +1,11 @@
 import admin from "firebase-admin";
+import { readFileSync } from "fs";
 
 // ============================================================
 // FCM push — cook/waiter mobil bildirishnomalar.
-// Firebase service account FAQAT env orqali (FIREBASE_SERVICE_ACCOUNT = JSON string).
+// FIREBASE_SERVICE_ACCOUNT = service account (env):
+//   - inline JSON ('{' bilan boshlansa) YOKI
+//   - JSON fayl yo'li (mas. ./.firebase-service-account.json).
 // Sozlanmagan bo'lsa — XAVFSIZ no-op (xato bermaydi, push o'chiq).
 // ============================================================
 
@@ -12,15 +15,15 @@ let tried = false;
 function ensureInit() {
   if (tried) return fcmApp;
   tried = true;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const raw = (process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
   if (!raw) {
     console.log("[push] FIREBASE_SERVICE_ACCOUNT yo'q — FCM OFF (no-op)");
     return null;
   }
   try {
-    const cred = JSON.parse(raw);
+    const cred = raw.startsWith("{") ? JSON.parse(raw) : JSON.parse(readFileSync(raw, "utf8"));
     fcmApp = admin.initializeApp({ credential: admin.credential.cert(cred) });
-    console.log("[push] FCM yoqildi");
+    console.log(`[push] FCM yoqildi (project: ${cred.project_id})`);
     return fcmApp;
   } catch (e) {
     console.error("[push] init xato:", e.message);
