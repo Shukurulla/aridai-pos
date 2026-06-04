@@ -86,6 +86,74 @@ class _LoginScreenState extends State<LoginScreen> {
         : text;
   }
 
+  /// Configure which backend the app talks to — needed on a real device, where
+  /// `localhost` is the phone itself (use the dev machine's LAN IP or the
+  /// deployed server). Persisted via [ApiService.setServerUrl].
+  Future<void> _serverDialog() async {
+    final controller = TextEditingController(text: ApiService.baseUrl);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'Адрес сервера',
+          style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Напр.: http://192.168.1.10:4560\n(на устройстве — IP компьютера или сервера)',
+              style: TextStyle(fontSize: 12, color: AppColors.mute),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              style: const TextStyle(color: AppColors.ink, fontSize: 14),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppColors.surface2,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.red),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена',
+                style: TextStyle(color: AppColors.mute)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Сохранить',
+                style: TextStyle(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null) return;
+    await ApiService.instance.setServerUrl(result);
+    if (mounted) setState(() => _error = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,6 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   _buildBrand(),
                   const SizedBox(height: 40),
                   _buildCard(),
+                  const SizedBox(height: 12),
+                  _buildServerButton(),
                 ],
               ),
             ),
@@ -352,6 +422,20 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildServerButton() {
+    return TextButton.icon(
+      onPressed: _loading ? null : _serverDialog,
+      style: TextButton.styleFrom(foregroundColor: AppColors.mute),
+      icon: const Icon(Icons.dns_outlined, size: 15, color: AppColors.mute),
+      label: Text(
+        'Сервер: ${ApiService.baseUrl}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: AppColors.mute, fontSize: 12),
       ),
     );
   }

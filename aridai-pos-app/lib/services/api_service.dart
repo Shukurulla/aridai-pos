@@ -49,11 +49,21 @@ class ApiService {
   /// emulator replace `localhost` with the dev machine's LAN IP
   /// (e.g. `http://192.168.1.10:4560/api`), since `localhost` resolves to the
   /// device itself, not your computer.
-  static const String baseUrl = 'http://localhost:4560/api';
+  static const String _defaultApi = 'http://localhost:4560/api';
+  static const String _serverKey = 'server_base';
+
+  /// Current API base — **configurable** from the login screen "Сервер" dialog.
+  /// Dev default points at the host machine. On a real device `localhost` is the
+  /// phone itself, so set the dev machine's LAN IP (e.g. `http://192.168.1.10:4560`)
+  /// or the deployed server before logging in.
+  static String _apiBase = _defaultApi;
+  static String get baseUrl => _apiBase;
 
   /// Host root (no `/api`) used to resolve relative upload paths into full
-  /// image URLs. See [imageUrl].
-  static const String fileHost = 'http://localhost:4560';
+  /// image URLs — derived from [baseUrl].
+  static String get fileHost => _apiBase.endsWith('/api')
+      ? _apiBase.substring(0, _apiBase.length - 4)
+      : _apiBase;
 
   static const String _tokenKey = 'auth_token';
   static const String _userKey = 'auth_user';
@@ -66,8 +76,41 @@ class ApiService {
   /// The logged-in user, available synchronously after [loadSession].
   User? get currentUser => _currentUser;
 
+  /// Load the saved server base (or default) and apply it to Dio. Call before
+  /// any request (done inside [loadSession]).
+  Future<void> loadServerUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_serverKey);
+    if (saved != null && saved.isNotEmpty) {
+      _apiBase = saved;
+      _dio.options.baseUrl = _apiBase;
+    }
+  }
+
+  /// Persist + apply a new server address. Accepts a host
+  /// (`192.168.1.10:4560`, `http://host:4560`) or a full `.../api` URL and
+  /// normalizes it to start with `http(s)://` and end with `/api`. Returns the
+  /// normalized base.
+  Future<String> setServerUrl(String raw) async {
+    var url = raw.trim();
+    if (url.isEmpty) url = _defaultApi;
+    while (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://$url';
+    }
+    if (!url.endsWith('/api')) url = '$url/api';
+    _apiBase = url;
+    _dio.options.baseUrl = _apiBase;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_serverKey, url);
+    return url;
+  }
+
   /// Read token + user from prefs into memory. Call once at startup.
   Future<void> loadSession() async {
+    await loadServerUrl();
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenKey);
     final userRaw = prefs.getString(_userKey);
