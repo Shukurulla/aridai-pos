@@ -1,6 +1,6 @@
 {
   "name": "aridaipos-monitor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "src/main/index.js",
@@ -36,7 +36,8 @@
       {
         "provider": "github",
         "owner": "Shukurulla",
-        "repo": "aridai-pos"
+        "repo": "aridai-pos",
+        "channel": "monitor"
       }
     ],
     "directories": {

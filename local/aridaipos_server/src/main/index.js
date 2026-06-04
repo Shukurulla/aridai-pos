@@ -3,6 +3,9 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
+import electronUpdater from "electron-updater";
+
+const { autoUpdater } = electronUpdater;
 
 // ============================================================
 // AridaiPOS Local Server — Electron main process.
@@ -335,6 +338,27 @@ function registerIpc() {
   });
 }
 
+// ===== Auto-update (electron-updater, GitHub release) — SAYLENT =====
+// Server fon infratuzilma: yangilanish jimgina yuklanadi va keyingi qayta
+// ishga tushishda o'rnatiladi (POS monitordan farqli — interaktiv UI shart emas).
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.on("update-available", (i) =>
+  console.log(`[update] yangi versiya: ${i?.version} — yuklanmoqda…`),
+);
+autoUpdater.on("update-downloaded", (i) => {
+  console.log(`[update] ${i?.version} yuklandi — keyingi qayta ishga tushishda o'rnatiladi`);
+  if (tray) tray.setToolTip(`AridaiPOS Server — обновление ${i?.version} готово (перезапустите)`);
+});
+autoUpdater.on("error", (e) => console.error("[update] xato:", e?.message || e));
+
+function startAutoUpdate() {
+  if (isDev) return; // dev'da tekshirmaymiz
+  autoUpdater.checkForUpdates().catch(() => {});
+  // Har 6 soatda qayta tekshirish (server uzoq ishlaydi)
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+}
+
 // ── App lifecycle ──────────────────────────────────────────────────
 app.whenReady().then(async () => {
   authState = readJson("auth.json", null);
@@ -347,6 +371,7 @@ app.whenReady().then(async () => {
 
   await createWindow();
   createTray();
+  startAutoUpdate();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

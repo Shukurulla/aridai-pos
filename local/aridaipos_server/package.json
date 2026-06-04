@@ -1,6 +1,6 @@
 {
   "name": "aridai-local-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "src/main/index.js",
@@ -19,6 +19,7 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "electron-updater": "^6.8.3",
     "express": "^5.2.1",
     "express-rate-limit": "^7.4.1",
     "jsonwebtoken": "^9.0.3",
@@ -40,6 +41,14 @@
   "build": {
     "appId": "com.aridai.localserver",
     "productName": "AridaiPOS Local Server",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Shukurulla",
+        "repo": "aridai-pos",
+        "channel": "server"
+      }
+    ],
     "directories": {
       "output": "dist-app",
       "buildResources": "build"

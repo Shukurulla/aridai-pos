@@ -1,0 +1,45 @@
+name: Release local server (EXE)
+
+# local/aridaipos_server o'zgarsa (main'ga push) → Windows .exe (NSIS) quriladi va
+# electron-builder GitHub Release'ga publish qiladi (channel: server → server.yml).
+# Serverdagi electron-updater shu server.yml'ni ko'radi → SAYLENT avtomatik yangilanish
+# (keyingi qayta ishga tushishda o'rnatiladi). Yangi versiya: aridaipos_server/package.json `version`.
+#
+# DIQQAT (ko'p-app bitta repo): monitor → monitor.yml, server → server.yml (alohida channel),
+# shuning uchun update manifestlari to'qnashmaydi. Ishonchli avtoyangilanish uchun monitor va
+# server versiyalarini birga oshirish tavsiya etiladi (bitta release ichida ikkala channel bo'ladi).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "local/aridaipos_server/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: local/aridaipos_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: local/aridaipos_server/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Renderer build
+        run: npm run build:renderer
+
+      - name: Build + publish EXE
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}

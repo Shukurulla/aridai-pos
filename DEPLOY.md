@@ -8,11 +8,12 @@ AridaiPos_v2/                 ← monorepo (git root)
 ├── .github/workflows/        ← CI/CD
 │   ├── deploy-backend.yml    ← global/backend → VPS pull + pm2 restart
 │   ├── release-app.yml       ← aridai-pos-app → APK + GitHub Release (app-v*)
-│   └── release-monitor.yml   ← local/aridaipos_monitor → EXE + Release (electron-updater)
+│   ├── release-monitor.yml   ← local/aridaipos_monitor → EXE + Release (channel: monitor)
+│   └── release-server.yml    ← local/aridaipos_server → EXE + Release (channel: server)
 ├── global/backend            ← VPS (pm2)
 ├── global/{filial_admin,owner_admin,super_admin}  ← web (keyingi: static deploy)
-├── local/aridaipos_monitor   ← POS .exe (electron-updater)
-├── local/aridaipos_server    ← filial local server (.exe — keyingi)
+├── local/aridaipos_monitor   ← POS .exe (electron-updater, interaktiv)
+├── local/aridaipos_server    ← filial local server .exe (electron-updater, saylent)
 └── aridai-pos-app            ← mobil (APK / keyin AAB)
 ```
 
@@ -54,23 +55,27 @@ Endi `global/backend/**` o'zgarib push bo'lsa → workflow SSH bilan pull + rest
   `UpdateService` (lib/services/update_service.dart) GitHub Releases API'dan eng so'nggi `app-v`'ni
   tekshiradi → yangi bo'lsa "Обновить" dialogi (APK'ni brauzerda ochadi/yuklaydi).
   **Yangi versiya**: `aridai-pos-app/pubspec.yaml` `version:` ni oshiring → push.
-- **POS .exe** — `release-monitor.yml` electron-builder bilan publish qiladi, `electron-updater`
-  ko'radi. **Qo'shimcha ish kerak** (DEPLOY follow-up):
-  1. `local/aridaipos_monitor/package.json` ga:
-     ```json
-     "build": { "publish": [{ "provider": "github", "owner": "Shukurulla", "repo": "aridai-pos" }] }
-     ```
-  2. `npm i electron-updater`
-  3. main-process: `autoUpdater.checkForUpdatesAndNotify()` + preload `window.pos.updates`
-     (renderer Settings'da UI allaqachon bor — `window.pos.updates`).
-  > Monorepo + electron-updater: agar app-v/monitor-v relizlar aralashsa, EXE'ni **alohida
-  > releases-repo** (`aridai-pos-monitor`) ga publish qilish tozaroq (publish.repo + RELEASES_TOKEN).
+- **POS monitor .exe** ✅ — `release-monitor.yml` electron-builder bilan publish qiladi.
+  `electron-updater` interaktiv (renderer Settings → `window.pos.updates`).
+  Channel: **`monitor`** → `monitor.yml`.
+- **Local server .exe** ✅ — `release-server.yml` electron-builder bilan publish qiladi.
+  `electron-updater` **SAYLENT** (fon infratuzilma): jimgina yuklab, keyingi qayta ishga
+  tushishda o'rnatadi. Channel: **`server`** → `server.yml`.
+
+  > **Ko'p electron app + bitta repo:** ikkala app `latest.yml` o'rniga alohida channel
+  > ishlatadi (`monitor.yml` / `server.yml`), shuning uchun update manifestlari
+  > **to'qnashmaydi** (monitor xato bilan server build'ini o'rnatmaydi).
+  > **Ishonchli avtoyangilanish uchun** monitor va server `version`'larini **birga oshiring**
+  > (bir xil) — shunda bitta GitHub Release ichida ikkala channel ham bo'ladi va
+  > electron-updater "eng so'nggi release"dan o'z channel'ini topadi.
 
 ## Relizlar tartibi (qisqa)
 - Backend: `global/backend/**` push → VPS avto-restart (versiya shart emas).
 - APK: `aridai-pos-app/pubspec.yaml` version++ → push → `app-vX` release.
-- EXE: `local/aridaipos_monitor/package.json` version++ → push → release + electron-updater.
+- Monitor EXE: `local/aridaipos_monitor/package.json` version++ → push → release + auto-update.
+- Server EXE: `local/aridaipos_server/package.json` version++ → push → release + auto-update.
+  (Ikkala EXE — versiyani **birga** oshirish tavsiya etiladi.)
 
 ## Keyingi (hali yo'q)
-Web panellar deploy (static → VPS nginx / Vercel) · local-server .exe relizi · APK signing
-(release keystore) · code signing (EXE).
+Web panellar deploy (static → VPS nginx / Vercel) · APK signing (release keystore) ·
+code signing (EXE) · monitor↔server versiya sync skripti.
