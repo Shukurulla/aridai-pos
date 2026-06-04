@@ -1,0 +1,37 @@
+name: Deploy web panels (VPS)
+
+# global/{filial_admin,owner_admin,super_admin} o'zgarsa (main'ga push) →
+# VPS'da git pull + har panelni SERVER-SIDE build (npm + vite build → dist/).
+# nginx dist/ ni statik xizmat qiladi (/api + /uploads → backend :4560 proxy).
+# Kerakli secretlar: VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_PATH (backend bilan bir xil).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "global/filial_admin/**"
+      - "global/owner_admin/**"
+      - "global/super_admin/**"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH → pull + build panellar
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -e
+            cd "${{ secrets.VPS_PATH }}"
+            git pull origin main
+            for panel in filial_admin owner_admin super_admin; do
+              echo "=== build $panel ==="
+              cd "${{ secrets.VPS_PATH }}/global/$panel"
+              npm ci || npm install
+              npm run build
+            done
+            echo "Web panellar qayta qurildi (dist/) — nginx avtomatik xizmat qiladi"
