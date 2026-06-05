@@ -5,7 +5,7 @@ import fs from "fs";
 import dotenv from "dotenv";
 import electronUpdater from "electron-updater";
 import { printHtml, buildTestReceiptHtml, buildReceiptHtml } from "./print.js";
-import { setPrintHook } from "./backend/print-hook.js";
+import { setPrintHook, setPrinter } from "./backend/print-hook.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -77,7 +77,7 @@ async function bootBackend() {
   }
   // Mongoose modellarini status/foods/categories uchun yuklab qo'yamiz
   try {
-    const [order, food, category, table, users, printer, printerLogin] = await Promise.all([
+    const [order, food, category, table, users, printer, printerLogin, restaurants] = await Promise.all([
       import("./backend/models/order.model.js"),
       import("./backend/models/food.model.js"),
       import("./backend/models/category.model.js"),
@@ -85,6 +85,7 @@ async function bootBackend() {
       import("./backend/models/users.model.js"),
       import("./backend/models/printer.model.js"),
       import("./backend/models/printer_login.model.js"),
+      import("./backend/models/restaurants.model.js"),
     ]);
     models = {
       order: order.default,
@@ -94,6 +95,7 @@ async function bootBackend() {
       users: users.default,
       printer: printer.default,
       printer_login: printerLogin.default,
+      restaurants: restaurants.default,
     };
   } catch (e) {
     console.error("[LocalServer] modellarni yuklab bo'lmadi:", e.message);
@@ -140,6 +142,19 @@ const effQty = (f) => {
 const PAY_LABEL = { cash: "Наличные", card: "Карта", transfer: "Перевод", mixed: "Смешанная", kaspi: "Kaspi", click: "Перевод" };
 const CASHIER_ROLES = ["cashier", "kassir"];
 
+// Restoran valyutasi (UZS/KZT/...) — chek "сум"/"₸" shu yerdan
+async function getRestaurantCurrency(restId) {
+  try {
+    if (models?.restaurants && restId) {
+      const r = await models.restaurants.findById(restId).select("currency");
+      if (r?.currency) return r.currency;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "UZS";
+}
+
 async function printOrderReceipt(orderId) {
   try {
     if (!models?.printer || !models?.printer_login || !models?.order) return;
@@ -149,6 +164,8 @@ async function printOrderReceipt(orderId) {
 
     const order = await models.order.findById(orderId);
     if (!order) return;
+
+    const currency = await getRestaurantCurrency(authState?.restaurantId || order.restaurantId);
 
     const items = (order.foods || [])
       .filter((f) => !f.isDeleted)
@@ -162,6 +179,7 @@ async function printOrderReceipt(orderId) {
     const html = buildReceiptHtml({
       brand: authState?.restaurantName || "AridaiPOS",
       branchName: authState?.branchName,
+      currency,
       receiptNumber: order.receiptNumber,
       date: new Date(order.paidAt || Date.now()).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
       sellerName: order.waiter?.name || undefined,
@@ -187,6 +205,7 @@ async function printOrderReceipt(orderId) {
   }
 }
 setPrintHook(printOrderReceipt);
+setPrinter(printHtml); // backend print-hub (/print/*) shu orqali chop etadi
 
 // ── Oyna ───────────────────────────────────────────────────────────
 function applyZoom(f) {
@@ -469,6 +488,7 @@ function registerIpc() {
       const html = buildTestReceiptHtml({
         restaurantName: authState?.restaurantName,
         branchName: authState?.branchName,
+        currency: await getRestaurantCurrency(authState?.restaurantId),
         sellerName: seller || undefined,
         printerName: p?.name,
       });

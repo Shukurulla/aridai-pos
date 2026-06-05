@@ -9,7 +9,6 @@ import branchesModel from "../models/branches.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
-import { firePrintReceipt } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
 const router = express.Router();
@@ -506,9 +505,8 @@ router.post("/:id/pay", async (req, res) => {
     order.syncStatus = "pending";
     await order.save();
 
-    // Chek avtomatik chop etish (kassir bog'langan printerga) — fire-and-forget,
-    // to'lov javobini bloklamaydi/buzmaydi.
-    firePrintReceipt(String(order._id));
+    // Chek POS tomonidan chop etiladi (PrinterAPI.printPayment → POST /print/payment).
+    // Backend bu yerda chop ETMAYDI — aks holda ikki marta chiqardi.
 
     // Stol avtomatik bo'shaydi: paid order endi openOrders (paymentStatus=pending)
     // ro'yxatiga tushmaydi → tables endpoint uni band ko'rsatmaydi.

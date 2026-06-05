@@ -3,7 +3,8 @@
 // bog'lanmasligi kerak (standalone `node server.js` ham ishlasin). Shuning uchun:
 //   - backend faqat firePrintReceipt(orderId) chaqiradi (no-op agar hook yo'q).
 //   - main process (index.js) setPrintHook(fn) bilan haqiqiy print mantig'ini beradi.
-let hook = null;
+let hook = null; // firePrintReceipt(orderId) — to'lovda avtomatik chek
+let printer = null; // (html, deviceName) => {success, error} — umumiy print (Electron)
 
 export function setPrintHook(fn) {
   hook = typeof fn === "function" ? fn : null;
@@ -14,4 +15,14 @@ export function firePrintReceipt(orderId) {
   Promise.resolve()
     .then(() => hook(orderId))
     .catch((e) => console.warn("[print-hook] chek chop etishda xato:", e?.message));
+}
+
+// Umumiy print hook — backend HTML quradi, main process Electron orqali chop etadi.
+export function setPrinter(fn) {
+  printer = typeof fn === "function" ? fn : null;
+}
+
+export async function printViaHook(html, deviceName) {
+  if (!printer) return { success: false, error: "Печать недоступна (сервер не в Electron)" };
+  return await printer(html, deviceName);
 }

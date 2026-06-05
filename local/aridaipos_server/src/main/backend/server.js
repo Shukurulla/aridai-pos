@@ -15,6 +15,7 @@ import ordersRouter from "./routes/orders.routes.js";
 import reportsRouter from "./routes/reports.routes.js";
 import restaurantRouter from "./routes/restaurant.routes.js";
 import { expensesRouter, advancesRouter, expenseCategoriesRouter } from "./routes/finance.routes.js";
+import printHubRouter from "./routes/print-hub.routes.js";
 import localConfigModel from "./models/local_config.model.js";
 import { startSyncLoop, stopSyncLoop } from "./sync/sync-client.js";
 
@@ -42,6 +43,9 @@ export async function startLocalBackend() {
       uptime: process.uptime(),
     }),
   );
+
+  // Printer-hub (POS monitor → localhost:4561/print/*, /printers, /health — auth yo'q)
+  app.use("/", printHubRouter);
 
   // Qurilma sozlash (provisioning — filialga biriktirish)
   app.use("/api/setup", setupRouter);
