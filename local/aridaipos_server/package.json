@@ -56,8 +56,7 @@
     "files": [
       "src/main/**/*",
       "src/preload/**/*",
-      "dist/renderer/**/*",
-      ".env"
+      "dist/renderer/**/*"
     ],
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }]
