@@ -77,17 +77,35 @@ export async function pushSync({ orders = [], shifts = [], expenses = [], advanc
     throw new Error(`push xato: ${json.message || json.code || res.status}`);
   }
 
-  // Muvaffaqiyatli yuborilganlarni lokalda "synced" belgilash (raw — sync-meta hook'siz)
-  const markSynced = async (Model, docs) => {
-    const ids = docs.map((d) => d._id);
-    if (ids.length) {
-      await Model.collection.updateMany({ _id: { $in: ids } }, { $set: { syncStatus: "synced" } });
+  // Global javobiga qarab lokalda status belgilash (raw — sync-meta hook'siz):
+  //  - qabul qilinganlar → "synced"
+  //  - CONFLICT (global yangiroq) → "conflict" (collectPending olmaydi → qayta push yo'q,
+  //    keyingi pull global versiyasini qaytaradi → konvergensiya)
+  //  - TENANT_MISMATCH → "rejected" (noto'g'ri filial — qayta urinmaydi)
+  const rejected = json?.accepted?.rejected || [];
+  const idSet = (type, reason) =>
+    new Set(rejected.filter((r) => r.type === type && r.reason === reason).map((r) => String(r.id)));
+
+  const markByStatus = async (Model, docs, type) => {
+    if (!docs.length) return;
+    const conf = idSet(type, "CONFLICT");
+    const rej = idSet(type, "TENANT_MISMATCH");
+    const syncedIds = [], confIds = [], rejIds = [];
+    for (const d of docs) {
+      const sid = String(d._id);
+      if (conf.has(sid)) confIds.push(d._id);
+      else if (rej.has(sid)) rejIds.push(d._id);
+      else syncedIds.push(d._id);
     }
+    const upd = (ids, status) =>
+      ids.length ? Model.collection.updateMany({ _id: { $in: ids } }, { $set: { syncStatus: status } }) : null;
+    await Promise.all([upd(syncedIds, "synced"), upd(confIds, "conflict"), upd(rejIds, "rejected")].filter(Boolean));
   };
-  await markSynced(orderModel, orders);
-  await markSynced(shiftModel, shifts);
-  await markSynced(expenseModel, expenses);
-  await markSynced(advanceModel, advances);
+
+  await markByStatus(orderModel, orders, "order");
+  await markByStatus(shiftModel, shifts, "shift");
+  await markByStatus(expenseModel, expenses, "expense");
+  await markByStatus(advanceModel, advances, "advance");
   return json;
 }
 

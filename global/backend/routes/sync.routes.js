@@ -179,9 +179,14 @@ router.put("/service", async (req, res) => {
   }
 });
 
-// ===== Push — local order/smena/rasxod/avans global'ga (upsert, bir xil _id) =====
+// ===== Push — local order/smena/rasxod/avans global'ga (version-aware upsert) =====
 // Lokal POS source bo'lgan yozuvlar (cashier kiritadi) — global mirror (bir xil _id).
-// Tenant guard: faqat shu filialga tegishli yozuvlar qabul qilinadi.
+//  - Tenant guard: faqat shu filialga tegishli yozuvlar.
+//  - Konflikt guard (version monotonic): global'da yangiroq versiya bo'lsa, eski
+//    lokal push uni EZIB YUBORMAYDI — "CONFLICT" deb rad etiladi, audit'ga yoziladi.
+//    Lokal o'sha yozuvni syncStatus="conflict" qiladi (qayta push bo'lmaydi → loop yo'q),
+//    keyingi pull global versiyasini lokalga qaytaradi (konvergensiya).
+// obsidian/02-arxitektura/conflict-resolution.md
 router.post("/push", async (req, res) => {
   try {
     const branchId = String(req.branch._id);
@@ -189,13 +194,38 @@ router.post("/push", async (req, res) => {
 
     const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, rejected: [] };
 
-    // Bitta hujjatni filial tekshiruvi bilan upsert qiluvchi yordamchi
-    const upsertOne = async (Model, doc, type) => {
+    // Bitta hujjatni filial + versiya tekshiruvi bilan apply qiluvchi yordamchi.
+    // return true → hisobga olindi (apply yoki idempotent); false → rad etildi.
+    const applyOne = async (Model, doc, type) => {
+      // 1) Tenant guard
       if (String(doc.branch) !== branchId) {
-        accepted.rejected.push({ type, id: doc._id, reason: "TENANT_MISMATCH" });
+        accepted.rejected.push({ type, id: String(doc._id), reason: "TENANT_MISMATCH" });
         return false;
       }
-      doc.syncStatus = "synced"; // global qabul qildi — source of truth
+      // 2) Mavjud global hujjat (tombstone'ni ham ko'ramiz — o'chirilganni tiriltirmaslik uchun)
+      const existing = await Model.findById(doc._id)
+        .select("version lastModifiedAt")
+        .setOptions({ includeDeleted: true })
+        .lean();
+
+      if (existing) {
+        const iv = Number(doc.version) || 1; // incoming (local) version
+        const ev = Number(existing.version) || 1; // existing (global) version
+        const sameStamp =
+          doc.lastModifiedAt && existing.lastModifiedAt &&
+          new Date(doc.lastModifiedAt).getTime() === new Date(existing.lastModifiedAt).getTime();
+
+        // Konflikt: global yangiroq (ev>iv) YOKI bir xil versiya, lekin boshqacha (concurrent edit).
+        if (iv < ev || (iv === ev && !sameStamp)) {
+          accepted.rejected.push({ type, id: String(doc._id), reason: "CONFLICT", serverVersion: ev, clientVersion: iv });
+          return false;
+        }
+        // Idempotent (bir xil versiya + bir xil vaqt) — allaqachon bor, qayta yozmaymiz.
+        if (iv === ev && sameStamp) return true;
+      }
+
+      // 3) Apply (yangi insert yoki local-ahead update)
+      doc.syncStatus = "synced"; // global qabul qildi — mirror
       await Model.bulkWrite([
         { replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } },
       ]);
@@ -203,10 +233,10 @@ router.post("/push", async (req, res) => {
     };
 
     // Smenalar avval (order/rasxod/avans shift'ga bog'liq)
-    for (const s of shifts) if (await upsertOne(shiftModel, s, "shift")) accepted.shifts++;
-    for (const o of orders) if (await upsertOne(orderModel, o, "order")) accepted.orders++;
-    for (const e of expenses) if (await upsertOne(expenseModel, e, "expense")) accepted.expenses++;
-    for (const a of advances) if (await upsertOne(advanceModel, a, "advance")) accepted.advances++;
+    for (const s of shifts) if (await applyOne(shiftModel, s, "shift")) accepted.shifts++;
+    for (const o of orders) if (await applyOne(orderModel, o, "order")) accepted.orders++;
+    for (const e of expenses) if (await applyOne(expenseModel, e, "expense")) accepted.expenses++;
+    for (const a of advances) if (await applyOne(advanceModel, a, "advance")) accepted.advances++;
 
     if (accepted.orders || accepted.shifts || accepted.expenses || accepted.advances) {
       await audit.log({
@@ -214,6 +244,17 @@ router.post("/push", async (req, res) => {
         restaurantId: req.branch.restaurant,
         branchId: req.branch._id,
         message: `orders: ${accepted.orders}, shifts: ${accepted.shifts}, expenses: ${accepted.expenses}, advances: ${accepted.advances}`,
+      });
+    }
+
+    // Konfliktlar — pul masalasi, izsiz qolmasligi kerak (audit)
+    const conflicts = accepted.rejected.filter((r) => r.reason === "CONFLICT");
+    if (conflicts.length) {
+      await audit.log({
+        kind: "sync_conflict",
+        restaurantId: req.branch.restaurant,
+        branchId: req.branch._id,
+        message: conflicts.map((c) => `${c.type}:${c.id} (server v${c.serverVersion} > client v${c.clientVersion})`).join("; "),
       });
     }
 
