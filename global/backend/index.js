@@ -12,6 +12,7 @@ import { apiLimiter, loginLimiter } from "./middlewares/rate-limit.middleware.js
 import branchRouter from "./routes/branch.routes.js";
 import categoryRouter from "./routes/category.routes.js";
 import discountRouter from "./routes/discount.routes.js";
+import financeRouter from "./routes/finance.routes.js";
 import foodRouter from "./routes/food.routes.js";
 import orderRouter from "./routes/order.routes.js";
 import ownerRouter from "./routes/owner.routes.js";
@@ -66,6 +67,7 @@ app.use("/api/discounts", discountRouter);
 app.use("/api/services", serviceRouter);
 app.use("/api/shifts", shiftRouter);
 app.use("/api/orders", orderRouter);
+app.use("/api/finance", financeRouter); // Расходы/Авансы READ (sync'dan kelgan data — hisobotlar)
 app.use("/api/owner", ownerRouter); // owner mobil — filiallar + tushum statistikasi
 app.use("/api/pos", posRouter); // POS / waiter terminali (MVP)
 app.use("/api/sync", syncRouter); // lokal backend ↔ global sync (branchToken)

@@ -74,6 +74,10 @@ export const api = {
   orderItemQty: (orderId, itemId, quantity) => request("PATCH", `/orders/${orderId}/items/${itemId}/quantity`, { quantity }),
   branch: (branchId) => request("GET", `/branches/${branchId}`),
 
+  // Расходы / Авансы (sync orqali POS'dan kelgan — read-only hisobot)
+  expenses: (branchId) => request("GET", `/finance/expenses/${branchId}`),
+  advances: (branchId) => request("GET", `/finance/advances/${branchId}`),
+
   // Smena (ochish / yopish / ro'yxat)
   shifts: (branchId) => request("GET", `/shifts/all/${branchId}`),
   shiftCreate: (body) => request("POST", "/shifts/create", body),

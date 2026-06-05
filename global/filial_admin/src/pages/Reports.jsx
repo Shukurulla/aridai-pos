@@ -29,6 +29,8 @@ function effQty(item) {
 export default function Reports() {
   const { branchId } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [advances, setAdvances] = useState([]);
   const [loading, setLoading] = useState(true);
   // Default — "7 дней" (so'nggi hafta deyarli har doim ma'lumotli; "Сегодня" sotuvgacha bo'sh)
   const [period, setPeriod] = useState("7d");
@@ -36,10 +38,19 @@ export default function Reports() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await api.orders(branchId);
-      setOrders(r.data || []);
+      // Расходы/Авансы — sync orqali POS'dan keladi; bo'lmasa hisobot baribir ishlaydi
+      const [o, e, a] = await Promise.all([
+        api.orders(branchId),
+        api.expenses(branchId).catch(() => ({ data: [] })),
+        api.advances(branchId).catch(() => ({ data: [] })),
+      ]);
+      setOrders(o.data || []);
+      setExpenses(e.data || []);
+      setAdvances(a.data || []);
     } catch {
       setOrders([]);
+      setExpenses([]);
+      setAdvances([]);
     } finally {
       setLoading(false);
     }
@@ -101,13 +112,28 @@ export default function Reports() {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
 
+    // ===== Расходы / Авансы (kassa harakati — sync'dan) =====
+    const sumBy = (arr, pred) => arr.filter(pred).reduce((s, x) => s + (x.amount || 0), 0);
+    const expIn = expenses.filter((e) => new Date(e.createdAt).getTime() >= from);
+    const advIn = advances.filter((a) => new Date(a.createdAt).getTime() >= from);
+    const expenseCash = sumBy(expIn, (e) => e.type !== "income" && e.paymentType === "cash");
+    const expenseClick = sumBy(expIn, (e) => e.type !== "income" && e.paymentType === "click");
+    const incomeCash = sumBy(expIn, (e) => e.type === "income" && e.paymentType === "cash");
+    const advanceCash = sumBy(advIn, (a) => a.paymentType === "cash");
+    const advanceClick = sumBy(advIn, (a) => a.paymentType === "click");
+    // Kassada qolishi kerak bo'lgan naqd: naqd tushum + прих − rasxod − avans
+    const cashInDrawer = (byMethod.cash || 0) + incomeCash - expenseCash - advanceCash;
+
     return {
       revenue, avg, serviceTotal, discountTotal,
       ordersCount: live.length,
       cancelledCount: inRange.filter((o) => o.isCancel).length,
       byMethod, byType, topFoods,
+      expenseCash, expenseClick, incomeCash, advanceCash, advanceClick,
+      expenseCount: expIn.length, advanceCount: advIn.length,
+      cashInDrawer,
     };
-  }, [orders, period]);
+  }, [orders, expenses, advances, period]);
 
   const fmtD = (d) => new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
   const rangeText =
@@ -181,6 +207,32 @@ export default function Reports() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+
+          <div className="rep-grid" style={{ marginTop: 18 }}>
+            <div className="card rep-card">
+              <div className="rep-head">Касса (наличные)</div>
+              <div className="rep-row"><span>Наличная выручка</span><span className="a">{fmt(report.byMethod.cash)} ₸</span></div>
+              {report.incomeCash > 0 && (
+                <div className="rep-row"><span>Приход (нал.)</span><span className="a">+ {fmt(report.incomeCash)} ₸</span></div>
+              )}
+              <div className="rep-row sub"><span>Расходы (нал.)</span><span className="a">− {fmt(report.expenseCash)} ₸</span></div>
+              <div className="rep-row sub"><span>Авансы (нал.)</span><span className="a">− {fmt(report.advanceCash)} ₸</span></div>
+              <div className="rep-row" style={{ borderTop: "2px solid var(--line2, #ddd7c8)", marginTop: 6, paddingTop: 10, fontWeight: 900 }}>
+                <span>В кассе (нал.)</span>
+                <span className="a">{fmt(report.cashInDrawer)} ₸</span>
+              </div>
+            </div>
+
+            <div className="card rep-card">
+              <div className="rep-head">Расходы / Авансы</div>
+              <div className="rep-row"><span>Расходы <span className="muted">· {report.expenseCount}</span></span><span className="a">{fmt(report.expenseCash + report.expenseClick)} ₸</span></div>
+              <div className="rep-row sub"><span>наличными</span><span className="a">{fmt(report.expenseCash)} ₸</span></div>
+              <div className="rep-row sub"><span>перевод</span><span className="a">{fmt(report.expenseClick)} ₸</span></div>
+              <div className="rep-row" style={{ marginTop: 4 }}><span>Авансы <span className="muted">· {report.advanceCount}</span></span><span className="a">{fmt(report.advanceCash + report.advanceClick)} ₸</span></div>
+              <div className="rep-row sub"><span>наличными</span><span className="a">{fmt(report.advanceCash)} ₸</span></div>
+              <div className="rep-row sub"><span>перевод</span><span className="a">{fmt(report.advanceClick)} ₸</span></div>
             </div>
           </div>
 
