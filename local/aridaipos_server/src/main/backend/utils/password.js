@@ -1,4 +1,6 @@
-import bcrypt from "bcrypt";
+// bcryptjs (pure-JS) — bcrypt o'rniga: Electron EXE paketlashda native modul
+// (node-gyp) muammosi bo'lmaydi. Hash mos — global'ning $2b$ hashlarini ham verify qiladi.
+import bcrypt from "bcryptjs";
 
 const ROUNDS = 10;
 
