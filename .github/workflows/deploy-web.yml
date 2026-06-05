@@ -13,6 +13,13 @@ on:
       - "global/super_admin/**"
   workflow_dispatch: {}
 
+# Backend va web deploy BIR XIL VPS papkasida ishlaydi — bir vaqtda `git pull`
+# qilishsa race bo'ladi (web deploy intermittent fail). Shared concurrency group
+# bilan ketma-ket bajariladi (biri tugaguncha ikkinchisi kutadi).
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

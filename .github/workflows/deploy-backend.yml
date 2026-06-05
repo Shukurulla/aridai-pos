@@ -14,6 +14,12 @@ on:
       - "global/backend/**"
   workflow_dispatch: {}
 
+# Backend va web deploy BIR XIL VPS papkasida ishlaydi — bir vaqtda `git pull`
+# qilishsa race bo'ladi. Shared concurrency group bilan ketma-ket bajariladi.
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
