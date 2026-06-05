@@ -105,7 +105,7 @@ router.post("/login", async (req, res) => {
     const lastName = parts.slice(1).join(" ");
 
     const [restaurant, branchDoc] = await Promise.all([
-      restaurantsModel.findById(user.restaurantId).select("brand"),
+      restaurantsModel.findById(user.restaurantId).select("brand currency"),
       branchesModel.findById(user.branch).select("name"),
     ]);
 
@@ -122,7 +122,7 @@ router.post("/login", async (req, res) => {
           branchId: user.branch,
         },
         token,
-        restaurant: { _id: restaurant?._id, name: restaurant?.brand || "Ресторан" },
+        restaurant: { _id: restaurant?._id, name: restaurant?.brand || "Ресторан", currency: restaurant?.currency || "UZS" },
         branch: branchDoc ? { _id: branchDoc._id, name: branchDoc.name } : null,
       },
     });

@@ -1,5 +1,6 @@
 import { User, Restaurant, Order, DailySummary, PaymentType, PaymentSplit, SaboyItem, PartialPaymentResult, OrderItem, Shift, ExpenseCategory, Expense, Advance, Waiter } from "@/types";
 import { itemLineTotal } from "@/utils/hourly";
+import { setCurrency } from "@/lib/theme";
 
 // API manzili — POS monitor FAQAT LOCAL SERVER (aridaipos_server) ga ulanadi.
 // Global/VPS'ga TO'G'RIDAN ULANMAYDI (global bilan sync — local-server vazifasi;
@@ -395,7 +396,9 @@ class ApiService {
     const restaurant: Restaurant = {
       _id: responseData.restaurant?._id || '',
       name: responseData.restaurant?.name || '',
+      currency: responseData.restaurant?.currency || 'UZS',
     };
+    setCurrency(restaurant.currency);
 
     const branch = responseData.branch || null;
 
@@ -891,10 +894,13 @@ class ApiService {
 
     try {
       const parsed = JSON.parse(restaurantStr);
-      return {
+      const r = {
         _id: parsed._id || parsed.id || '',
         name: parsed.name || '',
+        currency: parsed.currency || 'UZS',
       };
+      setCurrency(r.currency); // valyutani tiklash (app qayta ochilganda)
+      return r;
     } catch {
       return null;
     }

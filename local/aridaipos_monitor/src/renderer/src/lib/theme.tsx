@@ -55,7 +55,16 @@ export const STATUS: Record<StatusKey, { label: string; color: string; bg: strin
   cancelled: { label: 'ОТМЕНЁН', color: T.cancelled, bg: T.cancelledBg },
 };
 
-export const fmt = (n: number) => (n || 0).toLocaleString('ru-RU') + ' ₸';
+// Valyuta — restoran sozlamasidan (login/start'da setCurrency() bilan o'rnatiladi).
+// UZS→сум, KZT→₸, RUB→₽, USD→$. Default ₸ (eski xatti-harakat).
+let CURRENCY = '₸';
+export function setCurrency(code?: string): void {
+  const c = String(code || '').toUpperCase();
+  CURRENCY = c === 'UZS' ? 'сум' : c === 'RUB' ? '₽' : c === 'USD' ? '$' : c === 'KZT' ? '₸' : CURRENCY;
+}
+export const getCurrency = (): string => CURRENCY;
+
+export const fmt = (n: number) => (n || 0).toLocaleString('ru-RU') + ' ' + CURRENCY;
 export const fmtN = (n: number) => (n || 0).toLocaleString('ru-RU');
 
 // Payment-type → Russian label (no Click/Kaspi/Uzcard/Humo in UI)

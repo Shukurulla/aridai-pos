@@ -10,6 +10,7 @@ export interface User {
 export interface Restaurant {
   _id: string;
   name: string;
+  currency?: string; // UZS/KZT/... — UI valyutasi (fmt)
 }
 
 export interface Branch {
