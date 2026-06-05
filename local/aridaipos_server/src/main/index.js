@@ -438,24 +438,60 @@ function registerIpc() {
   });
 
   ipcMain.handle("printers:loginAdd", async (_e, { printerId, phone, password } = {}) => {
-    if (!models?.printer_login || !models?.users) return { success: false, error: "Локальная БД недоступна" };
+    if (!models?.printer_login) return { success: false, error: "Локальная БД недоступна" };
     if (!printerId || !phone || !password) return { success: false, error: "Введите телефон и пароль" };
     try {
-      const { comparePassword } = await import("./backend/utils/password.js");
       const { normalizePhone } = await import("./backend/utils/phone.js");
-      const normPhone = normalizePhone(phone);
-      const user = await models.users.findOne({ phone: normPhone }).select("+password");
-      if (!user || user.isActive === false) return { success: false, error: "Сотрудник не найден" };
-      const ok = await comparePassword(password, user.password);
-      if (!ok) return { success: false, error: "Неверный пароль" };
-      const exists = await models.printer_login.findOne({ printer: printerId, userId: user._id });
+      let normPhone;
+      try {
+        normPhone = normalizePhone(phone);
+      } catch {
+        return { success: false, error: "Неверный номер телефона" };
+      }
+
+      // staff: { userId, phone, name, role }
+      let staff = null;
+
+      // 1) ONLINE — global'da tekshiramiz (eng YANGI parol; admin panelda
+      //    o'zgartirilgan parol local sync bo'lmasdan ham ishlaydi).
+      try {
+        const res = await fetch(`${GLOBAL_URL}/api/users/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: normPhone, password }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.status === "success" && json.data) {
+          const u = json.data;
+          staff = { userId: u._id, phone: u.phone, name: u.name, role: u.role };
+        } else if (json.code === "INVALID_CREDENTIALS") {
+          // Global — manba haqiqati: parol aniq noto'g'ri
+          return { success: false, error: "Неверный телефон или пароль" };
+        }
+        // boshqa xato (5xx/429) — pastga, local fallback
+      } catch {
+        // tarmoq yo'q — offline, local fallback
+      }
+
+      // 2) OFFLINE fallback — local synced user
+      if (!staff && models?.users) {
+        const { comparePassword } = await import("./backend/utils/password.js");
+        const user = await models.users.findOne({ phone: normPhone }).select("+password");
+        if (user && user.isActive !== false && (await comparePassword(password, user.password))) {
+          staff = { userId: user._id, phone: user.phone, name: user.name, role: user.role };
+        }
+      }
+
+      if (!staff) return { success: false, error: "Неверный телефон или пароль (или нет связи с сервером)" };
+
+      const exists = await models.printer_login.findOne({ printer: printerId, userId: staff.userId });
       if (exists) return { success: false, error: "Этот логин уже привязан к принтеру" };
       const doc = await models.printer_login.create({
         printer: printerId,
-        userId: user._id,
-        phone: user.phone,
-        staff_name: user.name,
-        role: user.role,
+        userId: staff.userId,
+        phone: staff.phone,
+        staff_name: staff.name,
+        role: staff.role,
       });
       return { success: true, data: mapLogin(doc) };
     } catch (e) {
