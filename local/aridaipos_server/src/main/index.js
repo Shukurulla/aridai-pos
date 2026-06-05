@@ -75,12 +75,13 @@ async function bootBackend() {
   }
   // Mongoose modellarini status/foods/categories uchun yuklab qo'yamiz
   try {
-    const [order, food, category, table, users] = await Promise.all([
+    const [order, food, category, table, users, printer] = await Promise.all([
       import("./backend/models/order.model.js"),
       import("./backend/models/food.model.js"),
       import("./backend/models/category.model.js"),
       import("./backend/models/table.model.js"),
       import("./backend/models/users.model.js"),
+      import("./backend/models/printer.model.js"),
     ]);
     models = {
       order: order.default,
@@ -88,6 +89,7 @@ async function bootBackend() {
       category: category.default,
       table: table.default,
       users: users.default,
+      printer: printer.default,
     };
   } catch (e) {
     console.error("[LocalServer] modellarni yuklab bo'lmadi:", e.message);
@@ -305,22 +307,129 @@ function registerIpc() {
     }
   });
 
-  // PRINTERS — hali ko'chirilmagan (kepket printer-hub keyingi bosqich)
-  const printerStub = { success: false, error: "Принтеры пока не подключены (в разработке)" };
-  ipcMain.handle("printers:list", async () => []);
-  ipcMain.handle("printers:devices", async () => []);
-  ipcMain.handle("printers:save", async () => printerStub);
-  ipcMain.handle("printers:remove", async () => printerStub);
-  ipcMain.handle("printers:test", async () => printerStub);
-  ipcMain.handle("printers:loginList", async () => []);
-  ipcMain.handle("printers:loginAdd", async () => printerStub);
-  ipcMain.handle("printers:loginCategories", async () => printerStub);
-  ipcMain.handle("printers:loginFoods", async () => printerStub);
-  ipcMain.handle("printers:loginRemove", async () => printerStub);
-  ipcMain.handle("printers:logoGet", async () => ({ enabled: false, hasLogo: false }));
-  ipcMain.handle("printers:logoSet", async () => printerStub);
-  ipcMain.handle("printers:logoUpload", async () => printerStub);
-  ipcMain.handle("printers:logoClear", async () => printerStub);
+  // PRINTERS — lokal printer konfiguratsiyasi (Phase 1: devices + saqlash + test).
+  // Login biriktirish va logo — keyingi bosqich (graceful stub, UI buzilmaydi).
+  const mapPrinter = (p) => ({
+    id: String(p._id),
+    name: p.name,
+    device_name: p.device_name,
+    kind: p.kind,
+    is_default: p.is_default,
+    ip_address: p.ip_address,
+  });
+
+  // OS'ga ulangan printerlar ro'yxati (getPrintersAsync)
+  ipcMain.handle("printers:devices", async () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) return { success: true, data: [] };
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      return {
+        success: true,
+        data: (printers || []).map((p) => ({
+          name: p.name,
+          displayName: p.displayName || p.name,
+          isDefault: !!p.isDefault,
+          status: p.status,
+        })),
+      };
+    } catch (e) {
+      return { success: false, error: e.message, data: [] };
+    }
+  });
+
+  // Saqlangan printerlar ro'yxati
+  ipcMain.handle("printers:list", async () => {
+    if (!models?.printer) return { success: true, data: [] };
+    try {
+      const list = await models.printer.find().sort({ createdAt: 1 });
+      return { success: true, data: list.map(mapPrinter) };
+    } catch (e) {
+      return { success: false, error: e.message, data: [] };
+    }
+  });
+
+  // Printer qo'shish / tahrirlash
+  ipcMain.handle("printers:save", async (_e, form) => {
+    if (!models?.printer) return { success: false, error: "Локальная БД недоступна" };
+    try {
+      const data = {
+        name: String(form?.name || "").trim(),
+        device_name: String(form?.device_name || "").trim(),
+        kind: form?.kind || "cashier",
+        is_default: !!form?.is_default,
+        ip_address: form?.ip_address || null,
+      };
+      if (!data.name || !data.device_name) {
+        return { success: false, error: "Введите название и выберите принтер" };
+      }
+      const doc = form?.id
+        ? await models.printer.findByIdAndUpdate(form.id, data, { new: true })
+        : await models.printer.create(data);
+      if (!doc) return { success: false, error: "Принтер не найден" };
+      // Bitta default — boshqalardan default'ni olib tashlaymiz
+      if (data.is_default) {
+        await models.printer.updateMany({ _id: { $ne: doc._id } }, { $set: { is_default: false } });
+      }
+      return { success: true, data: mapPrinter(doc) };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("printers:remove", async (_e, id) => {
+    if (!models?.printer) return { success: false, error: "Локальная БД недоступна" };
+    try {
+      await models.printer.findByIdAndDelete(id);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Test chop etish — yashirin oynada OS drayveri orqali (ESC/POS bo'lmasa ham ishlaydi)
+  ipcMain.handle("printers:test", async (_e, id) => {
+    let win = null;
+    try {
+      const p = id && models?.printer ? await models.printer.findById(id) : null;
+      const deviceName = p?.device_name || "";
+      if (!deviceName) return { success: false, error: "Принтер не выбран" };
+      const html = `<!doctype html><html><body style="font-family:monospace;font-size:13px;margin:0;padding:8px;width:280px;">
+        <div style="text-align:center;font-weight:bold;font-size:15px;">AridaiPOS</div>
+        <div style="text-align:center;">ТЕСТ ПЕЧАТИ</div>
+        <div>--------------------------------</div>
+        <div>Принтер: ${(p?.name || "—").replace(/[<>&]/g, "")}</div>
+        <div>Дата: ${new Date().toLocaleString("ru-RU")}</div>
+        <div>Связь с принтером: OK</div>
+        <div>--------------------------------</div>
+        <div style="text-align:center;">Спасибо!</div>
+      </body></html>`;
+      win = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
+      await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+      const result = await new Promise((resolve) => {
+        win.webContents.print(
+          { silent: true, deviceName, margins: { marginType: "none" }, printBackground: true },
+          (success, failureReason) => resolve({ success, failureReason }),
+        );
+      });
+      if (!result.success) return { success: false, error: result.failureReason || "Печать не выполнена" };
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    } finally {
+      if (win && !win.isDestroyed()) win.destroy();
+    }
+  });
+
+  // ── Login biriktirish + logo — keyingi bosqich (graceful: UI xato bermasin) ──
+  ipcMain.handle("printers:loginList", async () => ({ success: true, data: [] }));
+  ipcMain.handle("printers:loginAdd", async () => ({ success: false, error: "Привязка логинов — в следующем обновлении" }));
+  ipcMain.handle("printers:loginCategories", async () => ({ success: true }));
+  ipcMain.handle("printers:loginFoods", async () => ({ success: true }));
+  ipcMain.handle("printers:loginRemove", async () => ({ success: true }));
+  ipcMain.handle("printers:logoGet", async () => ({ success: true, enabled: true, custom: false, preview: null }));
+  ipcMain.handle("printers:logoSet", async () => ({ success: true }));
+  ipcMain.handle("printers:logoUpload", async () => ({ success: false, error: "Логотип на чеке — в следующем обновлении" }));
+  ipcMain.handle("printers:logoClear", async () => ({ success: true }));
 
   // UPDATES — auto-update hali sozlanmagan (faqat versiya ko'rsatiladi)
   ipcMain.handle("updates:current", async () => ({ version: app.getVersion(), packaged: app.isPackaged }));
