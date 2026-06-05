@@ -76,13 +76,14 @@ async function bootBackend() {
   }
   // Mongoose modellarini status/foods/categories uchun yuklab qo'yamiz
   try {
-    const [order, food, category, table, users, printer] = await Promise.all([
+    const [order, food, category, table, users, printer, printerLogin] = await Promise.all([
       import("./backend/models/order.model.js"),
       import("./backend/models/food.model.js"),
       import("./backend/models/category.model.js"),
       import("./backend/models/table.model.js"),
       import("./backend/models/users.model.js"),
       import("./backend/models/printer.model.js"),
+      import("./backend/models/printer_login.model.js"),
     ]);
     models = {
       order: order.default,
@@ -91,6 +92,7 @@ async function bootBackend() {
       table: table.default,
       users: users.default,
       printer: printer.default,
+      printer_login: printerLogin.default,
     };
   } catch (e) {
     console.error("[LocalServer] modellarni yuklab bo'lmadi:", e.message);
@@ -415,12 +417,85 @@ function registerIpc() {
     }
   });
 
-  // ── Login biriktirish + logo — keyingi bosqich (graceful: UI xato bermasin) ──
-  ipcMain.handle("printers:loginList", async () => ({ success: true, data: [] }));
-  ipcMain.handle("printers:loginAdd", async () => ({ success: false, error: "Привязка логинов — в следующем обновлении" }));
-  ipcMain.handle("printers:loginCategories", async () => ({ success: true }));
-  ipcMain.handle("printers:loginFoods", async () => ({ success: true }));
-  ipcMain.handle("printers:loginRemove", async () => ({ success: true }));
+  // ── Printer ↔ login biriktirish (login roli nimani chop etishni belgilaydi) ──
+  const mapLogin = (l) => ({
+    id: String(l._id),
+    phone: l.phone,
+    staff_name: l.staff_name,
+    role: l.role,
+    category_ids: l.category_ids || "[]",
+    food_ids: l.food_ids || "[]",
+  });
+
+  ipcMain.handle("printers:loginList", async (_e, printerId) => {
+    if (!models?.printer_login) return { success: true, data: [] };
+    try {
+      const list = await models.printer_login.find({ printer: printerId }).sort({ createdAt: 1 });
+      return { success: true, data: list.map(mapLogin) };
+    } catch (e) {
+      return { success: false, error: e.message, data: [] };
+    }
+  });
+
+  ipcMain.handle("printers:loginAdd", async (_e, { printerId, phone, password } = {}) => {
+    if (!models?.printer_login || !models?.users) return { success: false, error: "Локальная БД недоступна" };
+    if (!printerId || !phone || !password) return { success: false, error: "Введите телефон и пароль" };
+    try {
+      const { comparePassword } = await import("./backend/utils/password.js");
+      const { normalizePhone } = await import("./backend/utils/phone.js");
+      const normPhone = normalizePhone(phone);
+      const user = await models.users.findOne({ phone: normPhone }).select("+password");
+      if (!user || user.isActive === false) return { success: false, error: "Сотрудник не найден" };
+      const ok = await comparePassword(password, user.password);
+      if (!ok) return { success: false, error: "Неверный пароль" };
+      const exists = await models.printer_login.findOne({ printer: printerId, userId: user._id });
+      if (exists) return { success: false, error: "Этот логин уже привязан к принтеру" };
+      const doc = await models.printer_login.create({
+        printer: printerId,
+        userId: user._id,
+        phone: user.phone,
+        staff_name: user.name,
+        role: user.role,
+      });
+      return { success: true, data: mapLogin(doc) };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("printers:loginRemove", async (_e, loginId) => {
+    if (!models?.printer_login) return { success: false, error: "Локальная БД недоступна" };
+    try {
+      await models.printer_login.findByIdAndDelete(loginId);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("printers:loginCategories", async (_e, { loginId, categoryIds } = {}) => {
+    if (!models?.printer_login) return { success: false, error: "Локальная БД недоступна" };
+    try {
+      await models.printer_login.findByIdAndUpdate(loginId, {
+        category_ids: JSON.stringify(Array.isArray(categoryIds) ? categoryIds : []),
+      });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("printers:loginFoods", async (_e, { loginId, foodIds } = {}) => {
+    if (!models?.printer_login) return { success: false, error: "Локальная БД недоступна" };
+    try {
+      await models.printer_login.findByIdAndUpdate(loginId, {
+        food_ids: JSON.stringify(Array.isArray(foodIds) ? foodIds : []),
+      });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
   ipcMain.handle("printers:logoGet", async () => ({ success: true, enabled: true, custom: false, preview: null }));
   ipcMain.handle("printers:logoSet", async () => ({ success: true }));
   ipcMain.handle("printers:logoUpload", async () => ({ success: false, error: "Логотип на чеке — в следующем обновлении" }));
