@@ -92,21 +92,106 @@ export async function printHtml(html, deviceName) {
   }
 }
 
-// Test chek — jadval ko'rinishida (testprinter loyihasi uslubida)
-export function buildTestReceiptHtml({ name, branchName } = {}) {
-  const date = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" });
-  return `<!doctype html><html><head><meta charset="utf-8"></head>
-  <body style="width:72mm;margin:0;padding:6px 8px;font-family:Arial,sans-serif;color:#000;">
-    <h2 style="text-align:center;font-weight:900;margin:4px 0;font-size:18px;">AridaiPOS</h2>
-    ${branchName ? `<p style="text-align:center;margin:2px 0;font-size:13px;">${esc(branchName)}</p>` : ""}
-    <p style="text-align:center;margin:2px 0;font-weight:700;">ТЕСТ ПЕЧАТИ</p>
-    <p style="text-align:center;margin:2px 0;font-size:12px;">${date}</p>
-    <hr style="border:none;border-top:1px dashed #000;margin:6px 0;"/>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <tr><td style="padding:3px 2px;">Принтер</td><td style="padding:3px 2px;text-align:right;font-weight:700;">${esc(name || "—")}</td></tr>
-      <tr><td style="padding:3px 2px;">Связь</td><td style="padding:3px 2px;text-align:right;font-weight:700;">OK</td></tr>
-    </table>
-    <hr style="border:none;border-top:1px dashed #000;margin:6px 0;"/>
-    <p style="text-align:center;margin:4px 0;">Спасибо!</p>
+// Son formati: 200000 → "200 000"
+const fmt = (n) => Number(n || 0).toLocaleString("ru-RU").replace(/,/g, " ");
+const CUR = "сум";
+
+// Nuqtali leader qatori (label ······· value) — flexbox, toza (ASCII chiziq emas)
+function leaderRow(label, value, opts = {}) {
+  const big = opts.big ? "font-size:15px;font-weight:900;" : "";
+  const italic = opts.italic ? "font-style:italic;" : "";
+  const lw = opts.bold ? "font-weight:800;" : "";
+  const vstyle = `white-space:nowrap;font-weight:800;${big}${italic}`;
+  return `<div style="display:flex;align-items:flex-end;margin:4px 0;${big}${italic}">
+    <span style="white-space:nowrap;padding-bottom:1px;${lw}">${esc(label)}</span>
+    <span style="flex:1 1 auto;border-bottom:2px dotted #000;margin:0 6px 4px;min-width:14px;"></span>
+    <span style="${vstyle}">${esc(value)}</span>
+  </div>`;
+}
+
+// ===== To'lov cheki — VECTOR STYLE ko'rinishida =====
+// "Logikasi to'g'ri kelmaydigan" maydonlar (rabochee vremya, balans, barcode)
+// — data bo'lmasa CHIQARILMAYDI.
+export function buildReceiptHtml(data = {}) {
+  const {
+    brand = "AridaiPOS",
+    branchName,
+    receiptNumber,
+    date = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
+    sellerName,
+    clientName,
+    clientPhone,
+    items = [],
+    subtotal = 0,
+    discountTotal = 0,
+    discountPercent = 0,
+    serviceAmount = 0,
+    total = 0,
+    paymentLabel,
+    footer = "Спасибо за покупку!",
+  } = data;
+
+  const sep = `<div style="border-top:2px dotted #000;margin:8px 0;"></div>`;
+  const metaLine = (l, v) =>
+    `<div style="margin:3px 0;"><b style="font-weight:800;">${esc(l)}:</b> ${esc(v)}</div>`;
+
+  // Mahsulotlar
+  const itemsHtml = items
+    .map((it, i) => {
+      const meta = [it.meta, it.variant].filter(Boolean).map(esc).join(" / ");
+      const head = `<div style="font-weight:800;margin:8px 0 2px;">${i + 1}. ${esc(it.name)}${meta ? " / " + meta : ""}</div>`;
+      const qtyRow = leaderRow(`${fmt(it.qty)} шт x ${fmt(it.price)}`, `${fmt(it.lineTotal ?? it.qty * it.price)} ${CUR}`);
+      const discRow =
+        it.discountPercent > 0
+          ? leaderRow(`Скидка ${fmt(it.discountPercent)}%`, `${fmt(it.discountedTotal ?? 0)} ${CUR}`)
+          : "";
+      return head + qtyRow + discRow;
+    })
+    .join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    *{box-sizing:border-box;}
+    body{width:72mm;margin:0;padding:8px 10px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:13px;line-height:1.35;}
+  </style></head><body>
+    <div style="text-align:center;font-weight:900;font-size:22px;letter-spacing:1px;margin:2px 0 4px;">${esc(brand)}</div>
+    ${branchName ? `<div style="text-align:center;font-size:12px;margin-bottom:4px;">${esc(branchName)}</div>` : ""}
+    ${sep}
+    ${receiptNumber ? metaLine("Продажа", "#" + receiptNumber) : ""}
+    ${metaLine("Дата", date)}
+    ${sellerName ? metaLine("Продавец", sellerName) : ""}
+    ${clientName ? metaLine("Клиент", clientName) : ""}
+    ${clientPhone ? metaLine("Контакты", clientPhone) : ""}
+    ${sep}
+    ${itemsHtml}
+    ${sep}
+    ${leaderRow("Подытог", `${fmt(subtotal)} ${CUR}`)}
+    ${discountTotal > 0 ? leaderRow("Скидка", `${fmt(discountTotal)} ${CUR}`) : ""}
+    ${discountPercent > 0 ? leaderRow("Скидка %", `${fmt(discountPercent)} %`) : ""}
+    ${serviceAmount > 0 ? leaderRow("Обслуживание", `${fmt(serviceAmount)} ${CUR}`) : ""}
+    ${leaderRow("ИТОГО", `${fmt(total)} ${CUR}`, { big: true })}
+    ${paymentLabel ? leaderRow(paymentLabel, `${fmt(total)} ${CUR}`, { italic: true }) : ""}
+    ${sep}
+    <div style="text-align:center;font-weight:800;margin-top:10px;">${esc(footer)}</div>
   </body></html>`;
+}
+
+// Test chek — yuqoridagi dizaynda namuna ma'lumot bilan (chegirma ham ko'rinadi)
+export function buildTestReceiptHtml(ctx = {}) {
+  return buildReceiptHtml({
+    brand: ctx.restaurantName || "AridaiPOS",
+    branchName: ctx.branchName,
+    receiptNumber: "TEST-0001",
+    sellerName: ctx.sellerName || "Кассир",
+    clientName: ctx.printerName ? `Принтер: ${ctx.printerName}` : undefined,
+    items: [
+      { name: "Плов", meta: "Горячее", qty: 1, price: 30000, lineTotal: 30000, discountPercent: 50, discountedTotal: 15000 },
+      { name: "Кола 0.5", qty: 2, price: 12000, lineTotal: 24000 },
+    ],
+    subtotal: 54000,
+    discountTotal: 15000,
+    discountPercent: 28,
+    total: 39000,
+    paymentLabel: "Наличные",
+    footer: "ТЕСТ ПЕЧАТИ · Спасибо!",
+  });
 }

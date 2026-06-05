@@ -400,7 +400,15 @@ function registerIpc() {
       const p = id && models?.printer ? await models.printer.findById(id) : null;
       const deviceName = p?.device_name || "";
       if (!deviceName) return { success: false, error: "Принтер не выбран" };
-      const html = buildTestReceiptHtml({ name: p?.name, branchName: authState?.branchName });
+      const seller = authState?.staff
+        ? `${authState.staff.firstName || ""} ${authState.staff.lastName || ""}`.trim()
+        : undefined;
+      const html = buildTestReceiptHtml({
+        restaurantName: authState?.restaurantName,
+        branchName: authState?.branchName,
+        sellerName: seller || undefined,
+        printerName: p?.name,
+      });
       return await printHtml(html, deviceName);
     } catch (e) {
       return { success: false, error: e.message };
