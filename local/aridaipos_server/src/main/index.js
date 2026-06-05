@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
 import electronUpdater from "electron-updater";
-import { printHtml, buildTestReceiptHtml } from "./print.js";
+import { printHtml, buildTestReceiptHtml, buildReceiptHtml } from "./print.js";
+import { setPrintHook } from "./backend/print-hook.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -126,6 +127,66 @@ async function pingGlobal() {
     clearTimeout(t);
   }
 }
+
+// ── Chek avtomatik chop etish (to'lovda) ───────────────────────────
+// Buyurtma to'langanda — KASSIR roli bog'langan printerga to'lov cheki chiqadi.
+// (Backend pay handler firePrintReceipt(orderId) chaqiradi → shu hook.)
+const effQty = (f) => {
+  const c = Array.isArray(f.cancels) ? f.cancels : [];
+  const inc = c.filter((x) => x.status === "inc").reduce((s, x) => s + (x.changeVal || 0), 0);
+  const dec = c.filter((x) => x.status === "dec").reduce((s, x) => s + (x.changeVal || 0), 0);
+  return Math.max(0, (f.quantity || 0) + inc - dec);
+};
+const PAY_LABEL = { cash: "Наличные", card: "Карта", transfer: "Перевод", mixed: "Смешанная", kaspi: "Kaspi", click: "Перевод" };
+const CASHIER_ROLES = ["cashier", "kassir"];
+
+async function printOrderReceipt(orderId) {
+  try {
+    if (!models?.printer || !models?.printer_login || !models?.order) return;
+    const logins = await models.printer_login.find({ role: { $in: CASHIER_ROLES } });
+    if (!logins.length) return; // kassir printeri bog'lanmagan — jim
+    const printerIds = [...new Set(logins.map((l) => String(l.printer)))];
+
+    const order = await models.order.findById(orderId);
+    if (!order) return;
+
+    const items = (order.foods || [])
+      .filter((f) => !f.isDeleted)
+      .map((f) => {
+        const qty = effQty(f);
+        const line = f.isHourly && f.hourlyFinalAmount > 0 ? f.hourlyFinalAmount : (f.foodPrice || 0) * qty;
+        return { name: f.foodName, qty, price: f.isHourly ? f.hourlyPrice || f.foodPrice : f.foodPrice, lineTotal: line };
+      })
+      .filter((it) => it.qty > 0);
+
+    const html = buildReceiptHtml({
+      brand: authState?.restaurantName || "AridaiPOS",
+      branchName: authState?.branchName,
+      receiptNumber: order.receiptNumber,
+      date: new Date(order.paidAt || Date.now()).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
+      sellerName: order.waiter?.name || undefined,
+      items,
+      subtotal: order.subTotal || 0,
+      discountTotal: order.discountAmount || 0,
+      discountPercent: order.discount?.percent || 0,
+      serviceAmount: order.service?.amount || 0,
+      total: order.totalPrice || 0,
+      paymentLabel: PAY_LABEL[order.paymentMethod] || order.paymentMethod,
+      footer: "Спасибо за покупку!",
+    });
+
+    for (const pid of printerIds) {
+      const printer = await models.printer.findById(pid);
+      if (printer?.device_name) {
+        const r = await printHtml(html, printer.device_name);
+        if (!r?.success) console.warn("[receipt] print xato:", printer.device_name, r?.error);
+      }
+    }
+  } catch (e) {
+    console.warn("[receipt] printOrderReceipt xato:", e?.message);
+  }
+}
+setPrintHook(printOrderReceipt);
 
 // ── Oyna ───────────────────────────────────────────────────────────
 function applyZoom(f) {
