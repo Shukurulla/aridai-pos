@@ -1,11 +1,12 @@
 import express from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
+import { tenantGuard, tenantResource } from "../middlewares/tenant.middleware.js";
 import branchesModel from "../models/branches.model.js";
 import categoryModel from "../models/category.model.js";
 
 const router = express.Router();
 
-router.post("/create", authMiddleware, async (req, res) => {
+router.post("/create", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { title } = req.body;
     // branch/restaurantId — body'dan YOKI token'dan (mobil admin uchun ishonchli)
@@ -37,7 +38,7 @@ router.post("/create", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/all/:branchId", authMiddleware, async (req, res) => {
+router.get("/all/:branchId", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { branchId } = req.params;
 
@@ -73,7 +74,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/:id", authMiddleware, async (req, res) => {
+router.put("/:id", authMiddleware, tenantResource(categoryModel), async (req, res) => {
   try {
     const { id } = req.params;
     const { branch } = req.body;
@@ -100,7 +101,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", authMiddleware, tenantResource(categoryModel), async (req, res) => {
   try {
     const { id } = req.params;
 

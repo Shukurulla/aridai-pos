@@ -1,11 +1,12 @@
 import express from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
+import { tenantGuard, tenantResource } from "../middlewares/tenant.middleware.js";
 import branchesModel from "../models/branches.model.js";
 import discountModel from "../models/discount.model.js";
 
 const router = express.Router();
 
-router.post("/create", authMiddleware, async (req, res) => {
+router.post("/create", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { title, discountPercent, branch } = req.body;
 
@@ -27,7 +28,7 @@ router.post("/create", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/all/:branchId", authMiddleware, async (req, res) => {
+router.get("/all/:branchId", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { branchId } = req.params;
 
@@ -63,7 +64,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/:id", authMiddleware, async (req, res) => {
+router.put("/:id", authMiddleware, tenantResource(discountModel), async (req, res) => {
   try {
     const { id } = req.params;
     const { branch } = req.body;
@@ -90,7 +91,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", authMiddleware, tenantResource(discountModel), async (req, res) => {
   try {
     const { id } = req.params;
 

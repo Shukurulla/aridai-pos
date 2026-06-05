@@ -1,6 +1,7 @@
 import express from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
 import restoranMiddleware from "../middlewares/restoranAuth.middleware.js";
+import { tenantGuard, tenantResource } from "../middlewares/tenant.middleware.js";
 import branchesModel from "../models/branches.model.js";
 import tableModel from "../models/table.model.js";
 const router = express.Router();
@@ -39,7 +40,7 @@ router.post(
 
 // Branch admin (filial admin paneli) uchun — stol/kabina yaratish.
 // authMiddleware (user token); restoranMiddleware YO'Q. branch/restaurantId token'dan yoki body'dan.
-router.post("/create", authMiddleware, async (req, res) => {
+router.post("/create", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const branch = req.body.branch || String(req.userData.branch);
     const restaurantId = req.body.restaurantId || req.userData.restaurantId;
@@ -62,7 +63,7 @@ router.post("/create", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/tables/:branchId", authMiddleware, async (req, res) => {
+router.get("/tables/:branchId", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { branchId } = req.params;
 
@@ -99,7 +100,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/:id", authMiddleware, async (req, res) => {
+router.put("/:id", authMiddleware, tenantResource(tableModel), async (req, res) => {
   try {
     const { id } = req.params;
     const { branch } = req.body;
@@ -126,7 +127,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", authMiddleware, tenantResource(tableModel), async (req, res) => {
   try {
     const { id } = req.params;
 

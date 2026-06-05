@@ -1,5 +1,6 @@
 import express from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
+import { tenantGuard, tenantResource } from "../middlewares/tenant.middleware.js";
 import categoryModel from "../models/category.model.js";
 import foodModel from "../models/food.model.js";
 import branchesModel from "../models/branches.model.js";
@@ -7,7 +8,7 @@ import upload from "../middlewares/upload.middleware.js";
 
 const router = express.Router();
 
-router.post("/create", authMiddleware, upload.single("image"), async (req, res) => {
+router.post("/create", authMiddleware, upload.single("image"), tenantGuard, async (req, res) => {
   try {
     const { category } = req.body;
     // branch/restaurantId — body'dan YOKI token'dan (mobil admin uchun ishonchli)
@@ -41,7 +42,7 @@ router.post("/create", authMiddleware, upload.single("image"), async (req, res) 
   }
 });
 
-router.get("/all/:branchId", authMiddleware, async (req, res) => {
+router.get("/all/:branchId", authMiddleware, tenantGuard, async (req, res) => {
   try {
     const { branchId } = req.params;
     const findBranch = await branchesModel.findById(branchId);
@@ -80,7 +81,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
+router.put("/:id", authMiddleware, tenantResource(foodModel), upload.single("image"), async (req, res) => {
   try {
     const { id } = req.params;
     const { branch, category } = req.body;
@@ -122,7 +123,7 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
   }
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", authMiddleware, tenantResource(foodModel), async (req, res) => {
   try {
     const { id } = req.params;
 
