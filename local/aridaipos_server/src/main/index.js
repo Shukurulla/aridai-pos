@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
 import electronUpdater from "electron-updater";
+import { printHtml, buildTestReceiptHtml } from "./print.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -393,37 +394,16 @@ function registerIpc() {
     }
   });
 
-  // Test chop etish — yashirin oynada OS drayveri orqali (ESC/POS bo'lmasa ham ishlaydi)
+  // Test chop etish — HTML → PDF → printer (testprinter loyihasi oqimi, print.js)
   ipcMain.handle("printers:test", async (_e, id) => {
-    let win = null;
     try {
       const p = id && models?.printer ? await models.printer.findById(id) : null;
       const deviceName = p?.device_name || "";
       if (!deviceName) return { success: false, error: "Принтер не выбран" };
-      const html = `<!doctype html><html><body style="font-family:monospace;font-size:13px;margin:0;padding:8px;width:280px;">
-        <div style="text-align:center;font-weight:bold;font-size:15px;">AridaiPOS</div>
-        <div style="text-align:center;">ТЕСТ ПЕЧАТИ</div>
-        <div>--------------------------------</div>
-        <div>Принтер: ${(p?.name || "—").replace(/[<>&]/g, "")}</div>
-        <div>Дата: ${new Date().toLocaleString("ru-RU")}</div>
-        <div>Связь с принтером: OK</div>
-        <div>--------------------------------</div>
-        <div style="text-align:center;">Спасибо!</div>
-      </body></html>`;
-      win = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
-      await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
-      const result = await new Promise((resolve) => {
-        win.webContents.print(
-          { silent: true, deviceName, margins: { marginType: "none" }, printBackground: true },
-          (success, failureReason) => resolve({ success, failureReason }),
-        );
-      });
-      if (!result.success) return { success: false, error: result.failureReason || "Печать не выполнена" };
-      return { success: true };
+      const html = buildTestReceiptHtml({ name: p?.name, branchName: authState?.branchName });
+      return await printHtml(html, deviceName);
     } catch (e) {
       return { success: false, error: e.message };
-    } finally {
-      if (win && !win.isDestroyed()) win.destroy();
     }
   });
 
