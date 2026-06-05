@@ -97,12 +97,14 @@ async function bootBackend() {
 }
 
 // ── VPS heartbeat (status UI uchun) ────────────────────────────────
+// Timeout 6s — O'zbekiston↔VPS (Germaniya) HTTPS uchun 1.5s juda qisqa edi
+// (sovuq TLS handshake → abort → "Соединение..." qotib qolardi). Xatoni
+// to'g'ri ushlaymiz (avval .catch(()=>null) yutib yuborardi → diagnostika yo'q).
 async function pingGlobal() {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 6000);
   try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 1500);
-    const res = await fetch(`${GLOBAL_URL}/api/health`, { signal: ctl.signal }).catch(() => null);
-    clearTimeout(t);
+    const res = await fetch(`${GLOBAL_URL}/api/health`, { signal: ctl.signal });
     if (res && res.ok) {
       heartbeatState.isOnline = true;
       heartbeatState.lastConnectedAt = new Date().toISOString();
@@ -111,11 +113,14 @@ async function pingGlobal() {
     } else {
       heartbeatState.isOnline = false;
       heartbeatState.reconnectAttempts += 1;
+      heartbeatState.lastError = `HTTP ${res?.status ?? "?"}`;
     }
   } catch (e) {
     heartbeatState.isOnline = false;
     heartbeatState.reconnectAttempts += 1;
-    heartbeatState.lastError = e.message;
+    heartbeatState.lastError = e?.name === "AbortError" ? "timeout (6s)" : (e?.message || "network error");
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -269,6 +274,8 @@ function registerIpc() {
       heartbeat: { ...heartbeatState },
       counts,
       lastFullSyncAt: null,
+      globalUrl: GLOBAL_URL, // status UI'da ko'rsatish (qaysi serverga ulanyapti)
+      localPort: PORT, // LAN porti (POS monitorlar shu yerga ulanadi)
     };
   });
 

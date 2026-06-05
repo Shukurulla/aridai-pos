@@ -119,7 +119,7 @@ export default function StatusPage({ status, auth, navOnline = true }) {
           <li>В офлайн-режиме VPS не принимает заказы от официантов этого филиала.</li>
           <li>Полная синхронизация (меню, столы, заказы) каждые 5 минут.</li>
           <li>Real-time обновления заказов через socket events.</li>
-          <li>LAN API запущен на порту <code>3011</code> для POS-мониторов.</li>
+          <li>LAN API запущен на порту <code>4561</code> для POS-мониторов.</li>
         </ul>
       </div>
     </div>

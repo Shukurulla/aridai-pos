@@ -102,8 +102,19 @@ export default function Shell({ auth, onLogout }) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 22px', gap: 20 }}>
           <StatusBadge online={isOnline} branchOffline={branchOffline} />
           <span style={{ fontSize: 14, color: T.textMuted }}>
-            LAN: <strong style={{ color: T.text }}>http://localhost:3011</strong>
+            LAN: <strong style={{ color: T.text }}>http://localhost:{status?.localPort || 4561}</strong>
           </span>
+          {status?.globalUrl && (
+            <span style={{ fontSize: 14, color: T.textMuted }}>
+              Сервер:{' '}
+              <strong style={{ color: isOnline ? T.text : T.cancelled }}>
+                {status.globalUrl.replace(/^https?:\/\//, '')}
+              </strong>
+              {!isOnline && status?.heartbeat?.lastError && (
+                <span style={{ color: T.cancelled }}> · {status.heartbeat.lastError}</span>
+              )}
+            </span>
+          )}
           {status && (
             <span style={{ fontSize: 14, color: T.textMuted }}>
               Очередь синхр.: <strong style={{ color: T.text }}>{status.pendingSyncCount || 0}</strong>
