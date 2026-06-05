@@ -10,6 +10,8 @@ import discountModel from "../models/discount.model.js";
 import usersModel from "../models/users.model.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
+import expenseModel from "../models/expense.model.js";
+import advanceModel from "../models/advance.model.js";
 import { audit } from "../utils/audit.js";
 import { comparePassword, dummyCompare, hashPassword } from "../utils/password.js";
 import { normalizePhone } from "../utils/phone.js";
@@ -177,45 +179,41 @@ router.put("/service", async (req, res) => {
   }
 });
 
-// ===== Push — local order/smena global'ga (upsert, bir xil _id) =====
+// ===== Push — local order/smena/rasxod/avans global'ga (upsert, bir xil _id) =====
+// Lokal POS source bo'lgan yozuvlar (cashier kiritadi) — global mirror (bir xil _id).
+// Tenant guard: faqat shu filialga tegishli yozuvlar qabul qilinadi.
 router.post("/push", async (req, res) => {
   try {
     const branchId = String(req.branch._id);
-    const { orders = [], shifts = [] } = req.body;
+    const { orders = [], shifts = [], expenses = [], advances = [] } = req.body;
 
-    const accepted = { orders: 0, shifts: 0, rejected: [] };
+    const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, rejected: [] };
 
-    // Smenalar avval (order shift'ga bog'liq)
-    for (const s of shifts) {
-      if (String(s.branch) !== branchId) {
-        accepted.rejected.push({ type: "shift", id: s._id, reason: "TENANT_MISMATCH" });
-        continue;
+    // Bitta hujjatni filial tekshiruvi bilan upsert qiluvchi yordamchi
+    const upsertOne = async (Model, doc, type) => {
+      if (String(doc.branch) !== branchId) {
+        accepted.rejected.push({ type, id: doc._id, reason: "TENANT_MISMATCH" });
+        return false;
       }
-      s.syncStatus = "synced"; // global qabul qildi — source of truth
-      await shiftModel.bulkWrite([
-        { replaceOne: { filter: { _id: s._id }, replacement: s, upsert: true } },
+      doc.syncStatus = "synced"; // global qabul qildi — source of truth
+      await Model.bulkWrite([
+        { replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } },
       ]);
-      accepted.shifts++;
-    }
+      return true;
+    };
 
-    for (const o of orders) {
-      if (String(o.branch) !== branchId) {
-        accepted.rejected.push({ type: "order", id: o._id, reason: "TENANT_MISMATCH" });
-        continue;
-      }
-      o.syncStatus = "synced";
-      await orderModel.bulkWrite([
-        { replaceOne: { filter: { _id: o._id }, replacement: o, upsert: true } },
-      ]);
-      accepted.orders++;
-    }
+    // Smenalar avval (order/rasxod/avans shift'ga bog'liq)
+    for (const s of shifts) if (await upsertOne(shiftModel, s, "shift")) accepted.shifts++;
+    for (const o of orders) if (await upsertOne(orderModel, o, "order")) accepted.orders++;
+    for (const e of expenses) if (await upsertOne(expenseModel, e, "expense")) accepted.expenses++;
+    for (const a of advances) if (await upsertOne(advanceModel, a, "advance")) accepted.advances++;
 
-    if (accepted.orders || accepted.shifts) {
+    if (accepted.orders || accepted.shifts || accepted.expenses || accepted.advances) {
       await audit.log({
         kind: "sync_push",
         restaurantId: req.branch.restaurant,
         branchId: req.branch._id,
-        message: `orders: ${accepted.orders}, shifts: ${accepted.shifts}`,
+        message: `orders: ${accepted.orders}, shifts: ${accepted.shifts}, expenses: ${accepted.expenses}, advances: ${accepted.advances}`,
       });
     }
 

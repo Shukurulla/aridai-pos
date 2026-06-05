@@ -9,6 +9,8 @@ import discountModel from "../models/discount.model.js";
 import usersModel from "../models/users.model.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
+import expenseModel from "../models/expense.model.js";
+import advanceModel from "../models/advance.model.js";
 
 // Global'dan kelgan hujjatni lokal Mongo'ga BIR XIL _id bilan yozadi (mirror).
 // bulkWrite replaceOne — sync-meta plugin save-hook'larini chetlab o'tadi (versiya global'dan).
@@ -58,15 +60,17 @@ export async function bootstrapSync() {
   return { counts, syncedAt: d.syncedAt, menuSig };
 }
 
-// ===== Push — lokal order/smena global'ga =====
-export async function pushSync({ orders = [], shifts = [] } = {}) {
+// ===== Push — lokal order/smena/rasxod/avans global'ga =====
+export async function pushSync({ orders = [], shifts = [], expenses = [], advances = [] } = {}) {
   if (!config.branchToken) throw new Error("BRANCH_TOKEN yo'q");
-  if (!orders.length && !shifts.length) return { accepted: { orders: 0, shifts: 0 } };
+  if (!orders.length && !shifts.length && !expenses.length && !advances.length) {
+    return { accepted: { orders: 0, shifts: 0, expenses: 0, advances: 0 } };
+  }
 
   const res = await fetch(`${config.globalUrl}/api/sync/push`, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.branchToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ orders, shifts }),
+    body: JSON.stringify({ orders, shifts, expenses, advances }),
   });
   const json = await res.json();
   if (json.status !== "success") {
@@ -74,24 +78,29 @@ export async function pushSync({ orders = [], shifts = [] } = {}) {
   }
 
   // Muvaffaqiyatli yuborilganlarni lokalda "synced" belgilash (raw — sync-meta hook'siz)
-  const orderIds = orders.map((o) => o._id);
-  const shiftIds = shifts.map((s) => s._id);
-  if (orderIds.length) {
-    await orderModel.collection.updateMany({ _id: { $in: orderIds } }, { $set: { syncStatus: "synced" } });
-  }
-  if (shiftIds.length) {
-    await shiftModel.collection.updateMany({ _id: { $in: shiftIds } }, { $set: { syncStatus: "synced" } });
-  }
+  const markSynced = async (Model, docs) => {
+    const ids = docs.map((d) => d._id);
+    if (ids.length) {
+      await Model.collection.updateMany({ _id: { $in: ids } }, { $set: { syncStatus: "synced" } });
+    }
+  };
+  await markSynced(orderModel, orders);
+  await markSynced(shiftModel, shifts);
+  await markSynced(expenseModel, expenses);
+  await markSynced(advanceModel, advances);
   return json;
 }
 
-// Hali global'ga yuborilmagan (sync kerak) order/smenalarni topadi
+// Hali global'ga yuborilmagan (sync kerak) order/smena/rasxod/avanslarni topadi
 export async function collectPending() {
-  const [orders, shifts] = await Promise.all([
-    orderModel.find({ syncStatus: { $in: ["pending", "in_progress"] } }).limit(200).lean(),
-    shiftModel.find({ syncStatus: { $in: ["pending", "in_progress"] } }).limit(50).lean(),
+  const pend = { syncStatus: { $in: ["pending", "in_progress"] } };
+  const [orders, shifts, expenses, advances] = await Promise.all([
+    orderModel.find(pend).limit(200).lean(),
+    shiftModel.find(pend).limit(50).lean(),
+    expenseModel.find(pend).limit(200).lean(),
+    advanceModel.find(pend).limit(200).lean(),
   ]);
-  return { orders, shifts };
+  return { orders, shifts, expenses, advances };
 }
 
 // ===== Global'dan O'ZGARGAN orderlarni tortish (cancel/tahrir propagatsiyasi) =====
@@ -207,7 +216,7 @@ export async function runOrderSync() {
     const pending = await collectPending();
     const pushedIds = new Set();
     const pushedShiftIds = new Set();
-    if (pending.orders.length || pending.shifts.length) {
+    if (pending.orders.length || pending.shifts.length || pending.expenses.length || pending.advances.length) {
       await pushSync(pending);
       pending.orders.forEach((o) => pushedIds.add(String(o._id)));
       pending.shifts.forEach((s) => pushedShiftIds.add(String(s._id)));
