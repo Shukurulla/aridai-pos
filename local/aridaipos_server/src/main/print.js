@@ -3,7 +3,7 @@
 // HTML→PDF: Electron'ning O'Z Chromium'i (webContents.printToPDF) — puppeteer
 //   o'rniga (Electron'da Chromium allaqachon bor; ikkinchisini bundle qilmaymiz).
 // PDF→printer: Windows → pdf-to-printer (SumatraPDF); macOS/Linux → lp -d (CUPS).
-import { BrowserWindow } from "electron";
+import { BrowserWindow, app } from "electron";
 import { tmpdir } from "os";
 import { join } from "path";
 import { writeFile, unlink } from "fs/promises";
@@ -15,30 +15,52 @@ const execAsync = promisify(exec);
 const esc = (s) =>
   String(s ?? "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
 
-// 72mm termal chek uchun HTML → PDF (kenglik 72mm, balandlik kontentga moslanadi)
-async function htmlToPdf(html) {
-  const win = new BrowserWindow({
-    show: false,
-    width: 320,
-    height: 900,
-    webPreferences: { sandbox: true },
+// ===== HTML → PDF =====
+// ASOSIY: puppeteer (testprinter loyihasidagidek — termal printer CUPS filtri
+// puppeteer PDF'ini qabul qiladi; Electron printToPDF'ni rad etardi "Сбой фильтра").
+// puppeteer dev'da bor (devDependency). Packaged EXE'da yo'q → printToPDF fallback.
+async function htmlToPdfPuppeteer(html) {
+  const puppeteer = (await import("puppeteer")).default;
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "load" });
+    return await page.pdf({ width: "72mm", printBackground: true }); // reference bilan bir xil
+  } finally {
+    await browser.close();
+  }
+}
+
+// FALLBACK: Electron'ning o'z Chromium'i (packaged EXE — puppeteer yo'q).
+async function htmlToPdfElectron(html) {
+  const win = new BrowserWindow({ show: false, width: 320, height: 900, webPreferences: { sandbox: true } });
+  try {
     await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
-    // Kontent balandligi (px) → micron (1px@96dpi = 264.5833µm). puppeteer'dagi auto-height kabi.
-    const heightPx = await win.webContents
-      .executeJavaScript("document.body.scrollHeight")
-      .catch(() => 600);
+    const heightPx = await win.webContents.executeJavaScript("document.body.scrollHeight").catch(() => 600);
     const heightMicron = Math.max(Math.round((Number(heightPx) || 600) * 264.5833) + 24000, 80000);
     return await win.webContents.printToPDF({
       printBackground: true,
       margins: { marginType: "none" },
-      pageSize: { width: 72000, height: heightMicron }, // 72mm × auto
+      pageSize: { width: 72000, height: heightMicron },
     });
   } finally {
     if (!win.isDestroyed()) win.destroy();
   }
 }
+
+async function htmlToPdf(html) {
+  try {
+    return await htmlToPdfPuppeteer(html);
+  } catch (e) {
+    // puppeteer topilmasa/ishlamasa (packaged) — Electron printToPDF
+    console.warn("[print] puppeteer mavjud emas, Electron printToPDF fallback:", e?.message);
+    return await htmlToPdfElectron(html);
+  }
+}
+void app; // app — kelajakda packaged Chromium yo'li uchun
 
 // PDF buffer'ni printerga yuborish (OS bo'yicha)
 async function sendPdfToPrinter(pdfBuffer, deviceName) {

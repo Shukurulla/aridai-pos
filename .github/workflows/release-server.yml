@@ -35,6 +35,10 @@ jobs:
 
       - name: Install
         run: npm ci
+        env:
+          # puppeteer faqat dev (Mac CUPS) uchun — EXE'da printToPDF fallback ishlatadi.
+          # Chromium'ni CI'da yuklab o'tirmaymiz (tez + build buzilmasin).
+          PUPPETEER_SKIP_DOWNLOAD: "true"
 
       - name: Renderer build
         run: npm run build:renderer

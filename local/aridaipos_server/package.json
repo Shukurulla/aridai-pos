@@ -1,6 +1,6 @@
 {
   "name": "aridai-local-server",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "type": "module",
   "main": "src/main/index.js",
@@ -35,6 +35,7 @@
     "concurrently": "^9.0.1",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
+    "puppeteer": "^24.43.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vite": "^5.4.8"
