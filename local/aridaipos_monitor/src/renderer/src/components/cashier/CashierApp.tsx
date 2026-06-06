@@ -867,6 +867,34 @@ export function CashierApp() {
     [loadData],
   );
 
+  const handleCancelItem = useCallback(
+    async (orderId: string, itemId: string, reason?: string) => {
+      try {
+        await api.cancelItem(orderId, itemId, reason);
+        await loadData();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Не удалось отменить позицию';
+        alert(msg);
+        throw error;
+      }
+    },
+    [loadData],
+  );
+
+  const handleCancelOrder = useCallback(
+    async (orderId: string, reason?: string) => {
+      try {
+        await api.cancelOrder(orderId, reason);
+        await loadData();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Не удалось отменить заказ';
+        alert(msg);
+        throw error;
+      }
+    },
+    [loadData],
+  );
+
   const currentOrder = useMemo(
     () => orders.find((o) => o._id === currentOrderId) || null,
     [orders, currentOrderId],
@@ -949,6 +977,8 @@ export function CashierApp() {
     onAddItemsSuccess: handleAddItemsSuccess,
     onOrderCreated: handleOrderCreated,
     onChangeItemQty: handleChangeItemQty,
+    onCancelItem: handleCancelItem,
+    onCancelOrder: handleCancelOrder,
     onShiftChanged: (s) => {
       setActiveShift(s);
       setShiftLoaded(true);

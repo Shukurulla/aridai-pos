@@ -1184,6 +1184,24 @@ class ApiService {
     });
   }
 
+  // Отмена позиции — блюдо убирается из заказа (на бэке "dec" cancel → effQty 0 →
+  // total пересчитывается). Последнее блюдо удалить нельзя (отмените весь заказ).
+  async cancelItem(orderId: string, itemId: string, reason?: string): Promise<void> {
+    await this.request(`/api/orders/${orderId}/items/${itemId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: reason || null }),
+    });
+  }
+
+  // Отмена всего заказа (isCancel). Оплаченный заказ отменить нельзя. Стол
+  // освобождается автоматически (занятость считается по открытым заказам).
+  async cancelOrder(orderId: string, reason?: string): Promise<void> {
+    await this.request(`/api/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    });
+  }
+
   // #2: shu order uchun chegирма % (backend updateOrder → recalculateTotals).
   // FAQAT shu zakazga ta'sir qiladi; chekda ko'rsatiladi.
   async setOrderDiscount(orderId: string, discountPercent: number): Promise<void> {

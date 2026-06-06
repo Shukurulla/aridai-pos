@@ -8,7 +8,11 @@ import { StatusPill, Pager, CTA, Btn, Row } from '../shell';
 import { ScreenCtx } from './types';
 import { computeHourlyForItem, formatDuration, calculateHourlyCharge } from './Dashboard';
 
-type ModalState = { kind: 'qty'; it: OrderItem; value: number } | null;
+type ModalState =
+  | { kind: 'qty'; it: OrderItem; value: number }
+  | { kind: 'cancelItem'; it: OrderItem }
+  | { kind: 'cancelOrder' }
+  | null;
 
 export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
   const order = ctx.currentOrder;
@@ -54,14 +58,31 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
     setModalErr(null);
     setModal({ kind: 'qty', it, value: it.quantity });
   };
+  const askCancelItem = (it: OrderItem) => {
+    setModalErr(null);
+    setModal({ kind: 'cancelItem', it });
+  };
+  const askCancelOrder = () => {
+    setModalErr(null);
+    setModal({ kind: 'cancelOrder' });
+  };
 
   const runModal = async () => {
     if (!modal || busy) return;
     setBusy(true);
     setModalErr(null);
     try {
-      const q = Math.max(1, Math.floor(modal.value || 1));
-      if (q !== modal.it.quantity) await ctx.onChangeItemQty(order._id, modal.it._id, q);
+      if (modal.kind === 'qty') {
+        const q = Math.max(1, Math.floor(modal.value || 1));
+        if (q !== modal.it.quantity) await ctx.onChangeItemQty(order._id, modal.it._id, q);
+      } else if (modal.kind === 'cancelItem') {
+        await ctx.onCancelItem(order._id, modal.it._id);
+      } else if (modal.kind === 'cancelOrder') {
+        await ctx.onCancelOrder(order._id);
+        setModal(null);
+        ctx.go('orders'); // bekor qilingach ro'yxatga qaytamiz
+        return;
+      }
       setModal(null);
     } catch (e) {
       setModalErr(e instanceof Error ? e.message : 'Не удалось выполнить');
@@ -163,6 +184,28 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
               }}
             >
               Скидка{(order.discountPercent || 0) > 0 ? ` ${order.discountPercent}%` : ''}
+            </button>
+          )}
+          {!isPaid && order.status !== 'cancelled' && (
+            <button
+              onClick={askCancelOrder}
+              title="Отменить заказ"
+              style={{
+                height: 52,
+                padding: '0 18px',
+                background: T.surface,
+                color: T.cancelled,
+                border: `2px solid ${T.cancelled}`,
+                fontFamily: T.font,
+                fontSize: 16,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <NavIcon kind="x" color={T.cancelled} size={18} /> Отменить
             </button>
           )}
           <StatusPill status={sk} size="lg" />
@@ -296,7 +339,7 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                       borderLeft: `5px solid ${stColor}`,
                       padding: '14px 18px',
                       display: 'grid',
-                      gridTemplateColumns: '76px 1fr 120px 150px',
+                      gridTemplateColumns: '76px 1fr 104px 132px 44px',
                       alignItems: 'center',
                       gap: 14,
                       opacity: itemCancelled ? 0.7 : 1,
@@ -364,6 +407,33 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                     >
                       {fmt(amt(it))}
                     </div>
+                    {!isPaid && !itemPaid && !itemCancelled ? (
+                      <button
+                        onClick={() => askCancelItem(it)}
+                        title="Отменить блюдо"
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 8,
+                          background: T.cancelledBg,
+                          border: `1px solid ${T.cancelled}`,
+                          color: T.cancelled,
+                          fontSize: 18,
+                          fontWeight: 900,
+                          lineHeight: 1,
+                          cursor: 'pointer',
+                          fontFamily: T.font,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      <div />
+                    )}
                   </div>
                 );
               })}
@@ -552,7 +622,7 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
               gap: 18,
             }}
           >
-            {(
+            {modal.kind === 'qty' && (
               <>
                 <div style={{ fontSize: 22, fontWeight: 900 }}>Количество</div>
                 <div style={{ fontSize: 16, color: T.textMuted }}>{modal.it.name}</div>
@@ -591,6 +661,33 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
               </>
             )}
 
+            {modal.kind === 'cancelItem' && (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 900, color: T.cancelled }}>Отменить блюдо?</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>
+                  {modal.it.name} · {modal.it.quantity}×
+                </div>
+                <div style={{ fontSize: 14, color: T.textMuted, lineHeight: 1.5 }}>
+                  Позиция будет убрана из заказа и не войдёт в счёт. Последнее блюдо удалить
+                  нельзя — в этом случае отмените весь заказ.
+                </div>
+              </>
+            )}
+
+            {modal.kind === 'cancelOrder' && (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 900, color: T.cancelled }}>Отменить заказ?</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>
+                  {order.orderType === 'saboy' ? 'Собой' : order.tableName}
+                  {order.isOffline ? ' · Офлайн' : ` · №${order.orderNumber}`}
+                </div>
+                <div style={{ fontSize: 14, color: T.textMuted, lineHeight: 1.5 }}>
+                  Весь заказ будет отменён, стол освободится. Отменённый заказ нельзя вернуть
+                  из кассы.
+                </div>
+              </>
+            )}
+
             {modalErr && (
               <div style={{ background: T.cancelledBg, color: T.cancelled, padding: '10px 14px', fontWeight: 700, fontSize: 14 }}>
                 {modalErr}
@@ -607,12 +704,18 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                 style={{
                   ...modalBtn,
                   flex: 2,
-                  background: T.cta,
+                  background: modal.kind === 'qty' ? T.cta : T.cancelled,
                   color: '#fff',
                   opacity: busy ? 0.6 : 1,
                 }}
               >
-                {busy ? '…' : 'Сохранить'}
+                {busy
+                  ? '…'
+                  : modal.kind === 'qty'
+                    ? 'Сохранить'
+                    : modal.kind === 'cancelItem'
+                      ? 'Отменить блюдо'
+                      : 'Отменить заказ'}
               </button>
             </div>
           </div>

@@ -433,6 +433,74 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
   }
 });
 
+// ===== Itemni bekor qilish (DELETE /orders/:id/items/:itemId) =====
+// "dec" cancel qo'shadi → effektiv miqdor 0 → mapOrder uni chiqarmaydi, total
+// kamayadi (calculateOrderTotals effectiveQuantity'ni o'qiydi). foods array bo'sh
+// QOLMAYDI (validatsiya saqlanadi) + tarix saqlanadi (cancel-refund modeli).
+router.delete("/:id/items/:itemId", async (req, res) => {
+  try {
+    const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
+    if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
+    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.isCancel) return res.status(400).json({ success: false, error: { message: "Заказ отменён" } });
+
+    const item = order.foods.id(req.params.itemId);
+    if (!item) return res.status(404).json({ success: false, error: { message: "Блюдо не найдено" } });
+    if (item.isPaid === true) return res.status(400).json({ success: false, error: { message: "Оплаченное блюдо нельзя отменить" } });
+
+    const cur = effQty(item);
+    // Allaqachon bekor — idempotent (xato bermaymiz)
+    if (cur > 0) {
+      // Oxirgi aktiv taomni o'chirib bo'lmaydi — buning o'rniga butun orderni bekor qilish kerak
+      const activeLeft = (order.foods || []).filter((f) => String(f._id) !== String(item._id) && effQty(f) > 0).length;
+      if (activeLeft === 0) {
+        return res.status(400).json({ success: false, error: { message: "Нельзя отменить последнее блюдо — отмените весь заказ" } });
+      }
+      item.cancels.push({
+        status: "dec",
+        changeVal: cur,
+        changeReason: req.body?.reason || "Отмена позиции",
+        changedBy: req.userData.id || req.userData.userId || req.userData._id || null,
+        changedAt: new Date(),
+      });
+      calculateOrderTotals(order);
+      order.syncStatus = "pending";
+      await order.save();
+    }
+
+    const tableDoc = order.table ? await tableModel.findById(order.table) : null;
+    return res.json({ success: true, data: mapOrder(order, tableDoc) });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: { message: e.message } });
+  }
+});
+
+// ===== Orderni bekor qilish (POST /orders/:id/cancel) =====
+// isCancel=true → mapOrder status "cancelled" qaytaradi; stol band-ligi ochiq
+// (paymentStatus=pending, isCancel≠true) orderlardan kelib chiqadi → avtomatik bo'shaydi.
+router.post("/:id/cancel", async (req, res) => {
+  try {
+    const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
+    if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
+    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Оплаченный заказ нельзя отменить (нужен возврат)" } });
+
+    if (!order.isCancel) {
+      order.isCancel = true;
+      order.cancelType = req.body?.cancelType === "void" ? "void" : "cancel";
+      order.cancelReason = req.body?.reason || null;
+      order.cancelledBy = req.userData.id || req.userData.userId || req.userData._id || null;
+      order.cancelledAt = new Date();
+      order.syncStatus = "pending";
+      await order.save();
+    }
+
+    const tableDoc = order.table ? await tableModel.findById(order.table) : null;
+    return res.json({ success: true, data: mapOrder(order, tableDoc) });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: { message: e.message } });
+  }
+});
+
 // ===== To'lov (POST /orders/:id/pay) — kepket processPayment =====
 // To'lov DOIM butun order uchun (to'liq summa). paymentType QANDAY to'lashni
 // bildiradi (cash/card/click/mixed). Qisman summa qabul qilinmaydi — mixed
