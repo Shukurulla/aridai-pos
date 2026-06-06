@@ -366,7 +366,11 @@ router.post("/:id/items", async (req, res) => {
     calculateOrderTotals(order);
     order.syncStatus = "pending";
     await order.save();
-    firePrintKitchen(String(order._id)); // qo'shilgan taomlar — povar (kuxnya) cheki
+    // Qo'shilgan taomlar → povar (kuxnya) "ДОБАВЛЕНО ×N" cheki (faqat yangilari)
+    firePrintKitchen(
+      String(order._id),
+      newFoods.map((f) => ({ foodId: String(f.foodId), name: f.foodName, delta: Number(f.quantity) || 0 })),
+    );
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({ success: true, data: mapOrder(order, tableDoc) });
@@ -426,9 +430,14 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
     calculateOrderTotals(order);
     order.syncStatus = "pending";
     await order.save();
-    // Miqdor OSHsa — kuxnyaga yangilangan chek (povar ko'proq tayyorlashi kerak).
-    // Kamaytirish/bekor — "ОТКАЗ" alohida mantiq; bu yerda qayta chop etmaymiz (chalkashmasin).
-    if (qty > prevQty) firePrintKitchen(String(order._id));
+    // Miqdor o'zgarsa povarga xabar: oshsa "ДОБАВЛЕНО ×N", kamaysa "ОТМЕНЕНО ×N"
+    // (left = qancha qoldi → povar yakuniy nechta qilishni biladi).
+    const delta = qty - prevQty;
+    if (delta !== 0) {
+      firePrintKitchen(String(order._id), [
+        { foodId: String(item.foodId), name: item.foodName, delta, left: qty },
+      ]);
+    }
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({ success: true, data: mapOrder(order, tableDoc) });
@@ -470,6 +479,10 @@ router.delete("/:id/items/:itemId", async (req, res) => {
       calculateOrderTotals(order);
       order.syncStatus = "pending";
       await order.save();
+      // Povarga "ОТМЕНЕНО ×cur" cheki (osha stol/taom to'liq bekor qilindi)
+      firePrintKitchen(String(order._id), [
+        { foodId: String(item.foodId), name: item.foodName, delta: -cur, left: 0 },
+      ]);
     }
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;

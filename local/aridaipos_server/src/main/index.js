@@ -212,18 +212,24 @@ setPrinter(printHtml); // backend print-hub (/print/*) shu orqali chop etadi
 // Kuxnya cheki — order yaratilganda/taom qo'shilganda povar printeriga.
 // Har povar login'i o'ziga biriktirilgan kategoriya/taomlar bo'yicha filtrlaydi
 // (hech narsa biriktirilmagan bo'lsa — butun order chiqadi). Narxsiz.
-async function printKitchenReceipt(orderId) {
+// changes (ixtiyoriy): [{ foodId, name, delta, left? }] — berilsa O'ZGARISH cheki
+// (ДОБАВЛЕНО/ОТМЕНЕНО, faqat o'zgargan taomlar). Berilmasa — to'liq "КУХНЯ" cheki
+// (yangi order: barcha taomlar). Har ikkalasi ham povar filtri bo'yicha yo'naltiriladi.
+async function printKitchenReceipt(orderId, changes) {
   try {
     if (!models?.printer || !models?.printer_login || !models?.order) return;
     const logins = await models.printer_login.find({ role: { $in: COOK_ROLES } });
     if (!logins.length) return; // povar printeri bog'lanmagan — jim
     const order = await models.order.findById(orderId);
     if (!order) return;
-    const allItems = (order.foods || []).filter((f) => !f.isDeleted && effQty(f) > 0);
-    if (!allItems.length) return;
+
+    const hasChanges = Array.isArray(changes) && changes.length > 0;
+    const allItems = hasChanges ? [] : (order.foods || []).filter((f) => !f.isDeleted && effQty(f) > 0);
+    if (!hasChanges && !allItems.length) return;
 
     // Taom → kategoriya (povar routing uchun)
-    const foodIds = [...new Set(allItems.map((f) => String(f.foodId || "")).filter(Boolean))];
+    const srcIds = hasChanges ? changes.map((c) => String(c.foodId || "")) : allItems.map((f) => String(f.foodId || ""));
+    const foodIds = [...new Set(srcIds.filter(Boolean))];
     const foods = foodIds.length ? await models.food.find({ _id: { $in: foodIds } }).select("_id category") : [];
     const foodCat = new Map(foods.map((f) => [String(f._id), String(f.category || "")]));
 
@@ -232,28 +238,51 @@ async function printKitchenReceipt(orderId) {
       tableDoc?.title || (tableDoc?.number ? `Стол ${tableDoc.number}` : order.orderType === "takeaway" ? "Собой" : "");
     const date = new Date(order.createdAt || Date.now()).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" });
 
-    for (const login of logins) {
+    // Povar filtri (category_ids/food_ids) — bo'sh bo'lsa barcha taomlar shu povarga.
+    const matcherFor = (login) => {
       let catIds = [];
       let foodSel = [];
       try { catIds = JSON.parse(login.category_ids || "[]").map(String); } catch { /* ignore */ }
       try { foodSel = JSON.parse(login.food_ids || "[]").map(String); } catch { /* ignore */ }
       const hasFilter = catIds.length > 0 || foodSel.length > 0;
-      const cookItems = hasFilter
-        ? allItems.filter((f) => {
-            const fid = String(f.foodId || "");
-            return foodSel.includes(fid) || catIds.includes(foodCat.get(fid) || "");
-          })
-        : allItems;
-      if (!cookItems.length) continue;
+      return (foodId) => {
+        if (!hasFilter) return true;
+        const fid = String(foodId || "");
+        return foodSel.includes(fid) || catIds.includes(foodCat.get(fid) || "");
+      };
+    };
 
-      const html = buildKitchenTicketHtml({
-        cookName: login.staff_name,
-        tableName,
-        waiterName: order.waiter?.name,
-        receiptNumber: order.receiptNumber,
-        date,
-        items: cookItems.map((f) => ({ name: f.foodName, qty: effQty(f) })),
-      });
+    for (const login of logins) {
+      const match = matcherFor(login);
+      let html;
+      if (hasChanges) {
+        const mine = changes.filter((c) => match(c.foodId));
+        const added = mine.filter((c) => Number(c.delta) > 0).map((c) => ({ name: c.name, qty: Number(c.delta) }));
+        const cancelled = mine
+          .filter((c) => Number(c.delta) < 0)
+          .map((c) => ({ name: c.name, qty: -Number(c.delta), left: c.left }));
+        if (!added.length && !cancelled.length) continue;
+        html = buildKitchenTicketHtml({
+          cookName: login.staff_name,
+          tableName,
+          waiterName: order.waiter?.name,
+          receiptNumber: order.receiptNumber,
+          date,
+          added,
+          cancelled,
+        });
+      } else {
+        const cookItems = allItems.filter((f) => match(f.foodId));
+        if (!cookItems.length) continue;
+        html = buildKitchenTicketHtml({
+          cookName: login.staff_name,
+          tableName,
+          waiterName: order.waiter?.name,
+          receiptNumber: order.receiptNumber,
+          date,
+          items: cookItems.map((f) => ({ name: f.foodName, qty: effQty(f) })),
+        });
+      }
       const printer = await models.printer.findById(login.printer);
       if (printer?.device_name) {
         const r = await printHtml(html, printer.device_name);

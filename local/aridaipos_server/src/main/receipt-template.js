@@ -109,29 +109,58 @@ export function buildReceiptHtml(data = {}) {
 }
 
 // ===== Kuxnya cheki (povar) — narxsiz, katta taom nomlari =====
-// Order yaratilganda/taom qo'shilganda povar printeriga chiqadi.
+// Ikki rejim:
+//   • Yangi order / to'liq → items[] ({name, qty}) → "КУХНЯ" + tayyorlash ro'yxati.
+//   • O'zgarish → added[] / cancelled[] ({name, qty, left?}) → "ИЗМЕНЕНИЕ" +
+//     ДОБАВЛЕНО ×N (ko'proq tayyorlash) / ОТМЕНЕНО ×N (osha taom qancha kamaydi,
+//     left bo'lsa "осталось N" — povar yakuniy qancha qilishni biladi).
 export function buildKitchenTicketHtml(data = {}) {
   const {
-    title = "КУХНЯ",
+    title,
     cookName,
     tableName,
     waiterName,
     receiptNumber,
     date = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
     items = [],
+    added = [],
+    cancelled = [],
   } = data;
+  const hasChange = (Array.isArray(added) && added.length) || (Array.isArray(cancelled) && cancelled.length);
+  const head = title || (hasChange ? "ИЗМЕНЕНИЕ" : "КУХНЯ");
   const sep = `<div style="border-top:2px dashed #000;margin:6px 0;"></div>`;
-  const rows = items
-    .map(
-      (it) =>
-        `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:7px 0;font-size:17px;font-weight:800;">
-        <span>${esc(it.name)}</span><span style="white-space:nowrap;margin-left:12px;">× ${esc(it.qty)}</span>
-      </div>`,
-    )
-    .join("");
+
+  const line = (name, qty, opts = {}) =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:7px 0;font-size:18px;font-weight:800;${opts.strike ? "text-decoration:line-through;" : ""}">
+      <span>${esc(name)}${opts.left != null && opts.left > 0 ? ` <span style="font-size:13px;font-weight:600;text-decoration:none;">(осталось ${esc(opts.left)})</span>` : ""}</span>
+      <span style="white-space:nowrap;margin-left:12px;">× ${esc(qty)}</span>
+    </div>`;
+
+  const sectionLabel = (text, mark) =>
+    `<div style="font-size:15px;font-weight:900;letter-spacing:0.5px;margin:6px 0 2px;border:2px solid #000;padding:3px 10px;display:inline-block;">${mark} ${esc(text)}</div>`;
+
+  let body;
+  if (hasChange) {
+    let s = "";
+    if (added.length) {
+      s += sectionLabel("ДОБАВЛЕНО", "+");
+      s += added.map((it) => line(it.name, it.qty)).join("");
+    }
+    if (cancelled.length) {
+      if (added.length) s += sep;
+      s += sectionLabel("ОТМЕНЕНО", "×");
+      s += cancelled.map((it) => line(it.name, it.qty, { strike: true, left: it.left })).join("");
+    }
+    body = s;
+  } else {
+    body = items.length
+      ? items.map((it) => line(it.name, it.qty)).join("")
+      : '<div style="text-align:center;">—</div>';
+  }
+
   return `<!doctype html><html><head><meta charset="utf-8"></head>
   <body style="width:72mm;margin:0;padding:8px 10px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:14px;line-height:1.3;">
-    <div style="text-align:center;font-weight:900;font-size:20px;letter-spacing:1px;">${esc(title)}</div>
+    <div style="text-align:center;font-weight:900;font-size:20px;letter-spacing:1px;">${esc(head)}</div>
     ${cookName ? `<div style="text-align:center;font-size:13px;margin-top:2px;">${esc(cookName)}</div>` : ""}
     ${sep}
     ${tableName ? `<div style="font-weight:900;font-size:17px;">${esc(tableName)}</div>` : ""}
@@ -139,7 +168,7 @@ export function buildKitchenTicketHtml(data = {}) {
     ${receiptNumber ? `<div style="font-size:12px;color:#000;">№ ${esc(receiptNumber)}</div>` : ""}
     <div style="font-size:12px;">${esc(date)}</div>
     ${sep}
-    ${rows || '<div style="text-align:center;">—</div>'}
+    ${body}
     ${sep}
   </body></html>`;
 }

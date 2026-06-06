@@ -23,10 +23,12 @@ export function setKitchenHook(fn) {
   kitchenHook = typeof fn === "function" ? fn : null;
 }
 
-export function firePrintKitchen(orderId) {
+// changes (ixtiyoriy): [{ foodId, name, delta, left? }] — delta>0 ДОБАВЛЕНО,
+// delta<0 ОТМЕНЕНО. Berilmasa → to'liq "КУХНЯ" cheki (yangi order).
+export function firePrintKitchen(orderId, changes) {
   if (!kitchenHook || !orderId) return;
   Promise.resolve()
-    .then(() => kitchenHook(orderId))
+    .then(() => kitchenHook(orderId, changes))
     .catch((e) => console.warn("[print-hook] kuxnya cheki xato:", e?.message));
 }
 
