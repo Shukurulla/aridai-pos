@@ -418,6 +418,7 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
     const item = order.foods.id(req.params.itemId);
     if (!item) return res.status(404).json({ success: false, error: { message: "Блюдо не найдено" } });
 
+    const prevQty = effQty(item); // o'zgarishdan oldingi (effektiv) miqdor
     const qty = Math.max(1, Number(req.body.quantity) || 1);
     item.quantity = qty;
     item.cancels = []; // to'g'ridan-to'g'ri miqdor → inc/dec tarixini tozalaymiz
@@ -425,6 +426,9 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
     calculateOrderTotals(order);
     order.syncStatus = "pending";
     await order.save();
+    // Miqdor OSHsa — kuxnyaga yangilangan chek (povar ko'proq tayyorlashi kerak).
+    // Kamaytirish/bekor — "ОТКАЗ" alohida mantiq; bu yerda qayta chop etmaymiz (chalkashmasin).
+    if (qty > prevQty) firePrintKitchen(String(order._id));
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({ success: true, data: mapOrder(order, tableDoc) });
