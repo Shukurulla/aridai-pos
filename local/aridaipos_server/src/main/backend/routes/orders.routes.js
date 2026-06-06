@@ -9,6 +9,7 @@ import branchesModel from "../models/branches.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
+import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
 const router = express.Router();
@@ -182,6 +183,7 @@ router.post("/", async (req, res) => {
     };
     calculateOrderTotals(orderData);
     const order = await orderModel.create(orderData);
+    firePrintKitchen(String(order._id)); // povar (kuxnya) cheki — fire-and-forget
     return res.json({ success: true, isNewOrder: true, data: mapOrder(order, tableDoc) });
   } catch (e) {
     return res.status(500).json({ success: false, error: { message: e.message } });
@@ -227,6 +229,7 @@ router.post("/saboy", async (req, res) => {
     };
     calculateOrderTotals(orderData);
     const order = await orderModel.create(orderData);
+    firePrintKitchen(String(order._id)); // povar (kuxnya) cheki
     return res.json({ success: true, isNewOrder: true, data: mapOrder(order, null) });
   } catch (e) {
     return res.status(500).json({ success: false, error: { message: e.message } });
@@ -363,6 +366,7 @@ router.post("/:id/items", async (req, res) => {
     calculateOrderTotals(order);
     order.syncStatus = "pending";
     await order.save();
+    firePrintKitchen(String(order._id)); // qo'shilgan taomlar — povar (kuxnya) cheki
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({ success: true, data: mapOrder(order, tableDoc) });

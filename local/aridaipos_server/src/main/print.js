@@ -9,7 +9,7 @@ import { writeFile, unlink } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 
-export { buildReceiptHtml, buildTestReceiptHtml, currencyLabel } from "./receipt-template.js";
+export { buildReceiptHtml, buildTestReceiptHtml, buildKitchenTicketHtml, currencyLabel } from "./receipt-template.js";
 
 const execAsync = promisify(exec);
 

@@ -4,8 +4,8 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import dotenv from "dotenv";
 import electronUpdater from "electron-updater";
-import { printHtml, buildTestReceiptHtml, buildReceiptHtml } from "./print.js";
-import { setPrintHook, setPrinter } from "./backend/print-hook.js";
+import { printHtml, buildTestReceiptHtml, buildReceiptHtml, buildKitchenTicketHtml } from "./print.js";
+import { setPrintHook, setPrinter, setKitchenHook } from "./backend/print-hook.js";
 import { getSyncState } from "./backend/sync/sync-client.js";
 
 const { autoUpdater } = electronUpdater;
@@ -142,6 +142,7 @@ const effQty = (f) => {
 };
 const PAY_LABEL = { cash: "Наличные", card: "Карта", transfer: "Перевод", mixed: "Смешанная", kaspi: "Kaspi", click: "Перевод" };
 const CASHIER_ROLES = ["cashier", "kassir"];
+const COOK_ROLES = ["cook", "kitchen", "chef", "oshpaz", "povar", "повар", "кухня"];
 
 // Restoran valyutasi (UZS/KZT/...) — chek "сум"/"₸" shu yerdan
 async function getRestaurantCurrency(restId) {
@@ -207,6 +208,63 @@ async function printOrderReceipt(orderId) {
 }
 setPrintHook(printOrderReceipt);
 setPrinter(printHtml); // backend print-hub (/print/*) shu orqali chop etadi
+
+// Kuxnya cheki — order yaratilganda/taom qo'shilganda povar printeriga.
+// Har povar login'i o'ziga biriktirilgan kategoriya/taomlar bo'yicha filtrlaydi
+// (hech narsa biriktirilmagan bo'lsa — butun order chiqadi). Narxsiz.
+async function printKitchenReceipt(orderId) {
+  try {
+    if (!models?.printer || !models?.printer_login || !models?.order) return;
+    const logins = await models.printer_login.find({ role: { $in: COOK_ROLES } });
+    if (!logins.length) return; // povar printeri bog'lanmagan — jim
+    const order = await models.order.findById(orderId);
+    if (!order) return;
+    const allItems = (order.foods || []).filter((f) => !f.isDeleted && effQty(f) > 0);
+    if (!allItems.length) return;
+
+    // Taom → kategoriya (povar routing uchun)
+    const foodIds = [...new Set(allItems.map((f) => String(f.foodId || "")).filter(Boolean))];
+    const foods = foodIds.length ? await models.food.find({ _id: { $in: foodIds } }).select("_id category") : [];
+    const foodCat = new Map(foods.map((f) => [String(f._id), String(f.category || "")]));
+
+    const tableDoc = order.table ? await models.table.findById(order.table) : null;
+    const tableName =
+      tableDoc?.title || (tableDoc?.number ? `Стол ${tableDoc.number}` : order.orderType === "takeaway" ? "Собой" : "");
+    const date = new Date(order.createdAt || Date.now()).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" });
+
+    for (const login of logins) {
+      let catIds = [];
+      let foodSel = [];
+      try { catIds = JSON.parse(login.category_ids || "[]").map(String); } catch { /* ignore */ }
+      try { foodSel = JSON.parse(login.food_ids || "[]").map(String); } catch { /* ignore */ }
+      const hasFilter = catIds.length > 0 || foodSel.length > 0;
+      const cookItems = hasFilter
+        ? allItems.filter((f) => {
+            const fid = String(f.foodId || "");
+            return foodSel.includes(fid) || catIds.includes(foodCat.get(fid) || "");
+          })
+        : allItems;
+      if (!cookItems.length) continue;
+
+      const html = buildKitchenTicketHtml({
+        cookName: login.staff_name,
+        tableName,
+        waiterName: order.waiter?.name,
+        receiptNumber: order.receiptNumber,
+        date,
+        items: cookItems.map((f) => ({ name: f.foodName, qty: effQty(f) })),
+      });
+      const printer = await models.printer.findById(login.printer);
+      if (printer?.device_name) {
+        const r = await printHtml(html, printer.device_name);
+        if (!r?.success) console.warn("[kitchen] print xato:", printer.device_name, r?.error);
+      }
+    }
+  } catch (e) {
+    console.warn("[kitchen] printKitchenReceipt xato:", e?.message);
+  }
+}
+setKitchenHook(printKitchenReceipt);
 
 // ── Oyna ───────────────────────────────────────────────────────────
 function applyZoom(f) {

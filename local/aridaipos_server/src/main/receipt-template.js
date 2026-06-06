@@ -95,6 +95,42 @@ export function buildReceiptHtml(data = {}) {
   </body></html>`;
 }
 
+// ===== Kuxnya cheki (povar) — narxsiz, katta taom nomlari =====
+// Order yaratilganda/taom qo'shilganda povar printeriga chiqadi.
+export function buildKitchenTicketHtml(data = {}) {
+  const {
+    title = "КУХНЯ",
+    cookName,
+    tableName,
+    waiterName,
+    receiptNumber,
+    date = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
+    items = [],
+  } = data;
+  const sep = `<div style="border-top:2px dashed #000;margin:6px 0;"></div>`;
+  const rows = items
+    .map(
+      (it) =>
+        `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:7px 0;font-size:17px;font-weight:800;">
+        <span>${esc(it.name)}</span><span style="white-space:nowrap;margin-left:12px;">× ${esc(it.qty)}</span>
+      </div>`,
+    )
+    .join("");
+  return `<!doctype html><html><head><meta charset="utf-8"></head>
+  <body style="width:72mm;margin:0;padding:8px 10px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:14px;line-height:1.3;">
+    <div style="text-align:center;font-weight:900;font-size:20px;letter-spacing:1px;">${esc(title)}</div>
+    ${cookName ? `<div style="text-align:center;font-size:13px;margin-top:2px;">${esc(cookName)}</div>` : ""}
+    ${sep}
+    ${tableName ? `<div style="font-weight:900;font-size:17px;">${esc(tableName)}</div>` : ""}
+    ${waiterName ? `<div style="margin-top:2px;">Официант: <b>${esc(waiterName)}</b></div>` : ""}
+    ${receiptNumber ? `<div style="font-size:12px;color:#000;">№ ${esc(receiptNumber)}</div>` : ""}
+    <div style="font-size:12px;">${esc(date)}</div>
+    ${sep}
+    ${rows || '<div style="text-align:center;">—</div>'}
+    ${sep}
+  </body></html>`;
+}
+
 // Test chek — namuna ma'lumot (chegirma ham ko'rinadi)
 export function buildTestReceiptHtml(ctx = {}) {
   return buildReceiptHtml({
