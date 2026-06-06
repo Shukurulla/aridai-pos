@@ -13,14 +13,20 @@ import expenseModel from "../models/expense.model.js";
 import advanceModel from "../models/advance.model.js";
 
 // Global'dan kelgan hujjatni lokal Mongo'ga BIR XIL _id bilan yozadi (mirror).
-// bulkWrite replaceOne — sync-meta plugin save-hook'larini chetlab o'tadi (versiya global'dan).
+// MUHIM: Model orqali cast (ObjectId'lar) → keyin RAW collection bulkWrite.
+// Sabab: Mongoose 9 `Model.bulkWrite(replaceOne)`'ni VALIDATE qiladi. Sync
+// qilinadigan hujjatda required maydon yo'q bo'lsa (mas. restaurant.owner.password
+// — global'da select:false, bootstrap'da kelmaydi) → op JIMGINA tashlanadi
+// (xato bermaydi, lekin yozmaydi) → restoran sync bo'lmay qolardi (valyuta xato).
+// `new Model(doc).toObject()` cast qiladi (validatsiyasiz), raw write esa validate qilmaydi.
 async function upsertMany(Model, docs) {
   const list = (docs || []).filter(Boolean);
   if (!list.length) return 0;
-  const ops = list.map((doc) => ({
-    replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true },
-  }));
-  const r = await Model.bulkWrite(ops, { ordered: false });
+  const ops = list.map((doc) => {
+    const casted = new Model(doc).toObject();
+    return { replaceOne: { filter: { _id: casted._id }, replacement: casted, upsert: true } };
+  });
+  const r = await Model.collection.bulkWrite(ops, { ordered: false });
   return (r.upsertedCount || 0) + (r.modifiedCount || 0);
 }
 
