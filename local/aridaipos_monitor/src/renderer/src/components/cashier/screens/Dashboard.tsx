@@ -235,7 +235,7 @@ function OrderCard({
           >
             <NavIcon kind="printer" size={17} /> Чек
           </button>
-          {!isPaid && !isCancelled && !online && (
+          {!isPaid && !isCancelled && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
