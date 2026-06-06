@@ -332,10 +332,18 @@ class ApiService {
       const r = await hub.request(method, endpoint, body);
       if (!r || r.success === false) {
         const e = r && (r as { error?: unknown }).error;
+        const eo = (e && typeof e === "object" ? e : {}) as { message?: string; code?: string; status?: number };
         const msg =
-          (e && typeof e === "object" && (e as { message?: string }).message) ||
+          eo.message ||
           (typeof e === "string" ? e : "") ||
           "Сервер недоступен";
+        // 401 / token yaroqsiz (local qayta provision / user yo'q) → login'ga
+        const unauthorized =
+          eo.status === 401 ||
+          /\b401\b|AUTH_REQUIRED|TOKEN_INVALID|TOKEN_REVOKED|USER_INACTIVE/i.test(`${eo.code || ""} ${msg}`);
+        if (unauthorized && !endpoint.includes("/auth/login") && typeof window !== "undefined") {
+          window.dispatchEvent(new Event("auth:unauthorized"));
+        }
         throw new Error(msg);
       }
       return r.data as T;
