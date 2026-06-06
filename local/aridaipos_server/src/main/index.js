@@ -685,10 +685,43 @@ function registerIpc() {
       return { success: false, error: e.message };
     }
   });
-  ipcMain.handle("printers:logoGet", async () => ({ success: true, enabled: true, custom: false, preview: null }));
-  ipcMain.handle("printers:logoSet", async () => ({ success: true }));
-  ipcMain.handle("printers:logoUpload", async () => ({ success: false, error: "Логотип на чеке — в следующем обновлении" }));
-  ipcMain.handle("printers:logoClear", async () => ({ success: true }));
+  const localCfgModel = async () => (await import("./backend/models/local_config.model.js")).default;
+  ipcMain.handle("printers:logoGet", async () => {
+    try {
+      const c = await (await localCfgModel()).findOne();
+      return { success: true, enabled: c?.logoEnabled !== false, custom: !!c?.logo, preview: c?.logo || null };
+    } catch (e) {
+      return { success: false, error: e.message, enabled: true, custom: false, preview: null };
+    }
+  });
+  ipcMain.handle("printers:logoSet", async (_e, on) => {
+    try {
+      await (await localCfgModel()).findOneAndUpdate({}, { logoEnabled: !!on }, { upsert: true });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+  ipcMain.handle("printers:logoUpload", async (_e, base64) => {
+    try {
+      if (!base64 || typeof base64 !== "string" || !base64.startsWith("data:image/")) {
+        return { success: false, error: "Неверный формат (нужен PNG/JPG)" };
+      }
+      if (base64.length > 700000) return { success: false, error: "Изображение слишком большое (макс ~500 КБ). Уменьшите." };
+      await (await localCfgModel()).findOneAndUpdate({}, { logo: base64, logoEnabled: true }, { upsert: true });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+  ipcMain.handle("printers:logoClear", async () => {
+    try {
+      await (await localCfgModel()).findOneAndUpdate({}, { logo: null }, { upsert: true });
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
 
   // UPDATES — auto-update hali sozlanmagan (faqat versiya ko'rsatiladi)
   ipcMain.handle("updates:current", async () => ({ version: app.getVersion(), packaged: app.isPackaged }));

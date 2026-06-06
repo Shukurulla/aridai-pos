@@ -33,6 +33,7 @@ export function buildReceiptHtml(data = {}) {
   const {
     brand = "AridaiPOS",
     branchName,
+    logo, // base64 data URL — bo'lsa brend tepasida ko'rsatiladi
     receiptNumber,
     date = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }),
     sellerName,
@@ -44,8 +45,11 @@ export function buildReceiptHtml(data = {}) {
     discountTotal = 0,
     discountPercent = 0,
     serviceAmount = 0,
+    servicePercent = 0,
     total = 0,
     paymentLabel,
+    mixedSplit, // { cash, card, transfer } — aralash to'lov bo'lganda
+    statusLabel, // "ОПЛАЧЕНО" / "ОТМЕНЕНО" — bo'lsa footer o'rniga (pastda)
     currency = "UZS",
     footer = "Спасибо за покупку!",
   } = data;
@@ -72,6 +76,7 @@ export function buildReceiptHtml(data = {}) {
     *{box-sizing:border-box;}
     body{width:72mm;margin:0;padding:8px 10px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:13px;line-height:1.35;}
   </style></head><body>
+    ${logo ? `<div style="text-align:center;margin:2px 0 6px;"><img src="${logo}" style="max-width:58mm;max-height:28mm;" /></div>` : ""}
     <div style="text-align:center;font-weight:900;font-size:22px;letter-spacing:1px;margin:2px 0 4px;">${esc(brand)}</div>
     ${branchName ? `<div style="text-align:center;font-size:12px;margin-bottom:4px;">${esc(branchName)}</div>` : ""}
     ${sep}
@@ -87,11 +92,19 @@ export function buildReceiptHtml(data = {}) {
     ${leaderRow("Подытог", `${fmt(subtotal)} ${CUR}`)}
     ${discountTotal > 0 ? leaderRow("Скидка", `${fmt(discountTotal)} ${CUR}`) : ""}
     ${discountPercent > 0 ? leaderRow("Скидка %", `${fmt(discountPercent)} %`) : ""}
-    ${serviceAmount > 0 ? leaderRow("Обслуживание", `${fmt(serviceAmount)} ${CUR}`) : ""}
+    ${serviceAmount > 0 ? leaderRow(`Обслуживание${servicePercent > 0 ? ` (${fmt(servicePercent)}%)` : ""}`, `${fmt(serviceAmount)} ${CUR}`) : ""}
     ${leaderRow("ИТОГО", `${fmt(total)} ${CUR}`, { big: true })}
-    ${paymentLabel ? leaderRow(paymentLabel, `${fmt(total)} ${CUR}`, { italic: true }) : ""}
+    ${
+      mixedSplit && (Number(mixedSplit.cash) || Number(mixedSplit.card) || Number(mixedSplit.transfer))
+        ? (Number(mixedSplit.cash) > 0 ? leaderRow("Наличные", `${fmt(mixedSplit.cash)} ${CUR}`, { italic: true }) : "") +
+          (Number(mixedSplit.card) > 0 ? leaderRow("Карта", `${fmt(mixedSplit.card)} ${CUR}`, { italic: true }) : "") +
+          (Number(mixedSplit.transfer) > 0 ? leaderRow("Перевод", `${fmt(mixedSplit.transfer)} ${CUR}`, { italic: true }) : "")
+        : paymentLabel
+          ? leaderRow(paymentLabel, `${fmt(total)} ${CUR}`, { italic: true })
+          : ""
+    }
     ${sep}
-    <div style="text-align:center;font-weight:800;margin-top:10px;">${esc(footer)}</div>
+    <div style="text-align:center;font-weight:900;font-size:${statusLabel ? "17px" : "14px"};margin-top:10px;">${esc(statusLabel || footer)}</div>
   </body></html>`;
 }
 

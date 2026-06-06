@@ -10,6 +10,10 @@ const localConfigSchema = new mongoose.Schema(
     restaurantId: { type: String, default: null },
     branchName: { type: String, default: null },
     provisionedAt: { type: Date, default: null },
+
+    // Chek logotipi (base64 data URL) + yoqilgan/o'chirilgan
+    logo: { type: String, default: null },
+    logoEnabled: { type: Boolean, default: true },
   },
   { timestamps: true },
 );

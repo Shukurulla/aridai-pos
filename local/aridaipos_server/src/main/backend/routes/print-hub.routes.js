@@ -2,6 +2,7 @@ import express from "express";
 import printerModel from "../models/printer.model.js";
 import printerLoginModel from "../models/printer_login.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
+import localConfigModel from "../models/local_config.model.js";
 import orderModel from "../models/order.model.js";
 import { buildReceiptHtml, buildTestReceiptHtml } from "../../receipt-template.js";
 import { printViaHook } from "../print-hook.js";
@@ -13,14 +14,21 @@ const router = express.Router();
 
 const PAY_LABEL = { cash: "Наличные", card: "Карта", transfer: "Перевод", click: "Перевод", mixed: "Смешанная", kaspi: "Kaspi" };
 
-async function getCurrency() {
+// Restoran BRENDI + valyutasi (chekda filial nomi emas, RESTORAN brendi chiqadi).
+async function getRestaurant() {
   try {
-    const r = await restaurantsModel.findOne().select("currency");
-    if (r?.currency) return r.currency;
+    const [r, cfg] = await Promise.all([
+      restaurantsModel.findOne().select("brand currency"),
+      localConfigModel.findOne().select("logo logoEnabled"),
+    ]);
+    return {
+      brand: r?.brand || "",
+      currency: r?.currency || "UZS",
+      logo: cfg?.logoEnabled !== false ? cfg?.logo || null : null,
+    };
   } catch {
-    /* ignore */
+    return { brand: "", currency: "UZS", logo: null };
   }
-  return "UZS";
 }
 
 // Chek qaysi printerga: body.printerName berilsa — o'sha; aks holda kassir
@@ -63,13 +71,23 @@ router.post("/print/payment", async (req, res) => {
     if (!device) {
       return res.json({ success: false, error: "Принтер не настроен. Привяжите логин кассира к принтеру в Local Server." });
     }
-    const currency = await getCurrency();
+    const { brand, currency, logo } = await getRestaurant();
 
-    // To'lov turi — order'dan (POS full-pay'da paymentType yubormaydi)
-    let paymentLabel;
+    // To'lov turi/aralash split/status — order'dan
+    let paymentLabel, mixedSplit, statusLabel;
     if (b.orderId) {
-      const ord = await orderModel.findById(b.orderId).select("paymentMethod").catch(() => null);
-      if (ord?.paymentMethod) paymentLabel = PAY_LABEL[ord.paymentMethod];
+      const ord = await orderModel
+        .findById(b.orderId)
+        .select("paymentMethod mixed paymentStatus isCancel")
+        .catch(() => null);
+      if (ord) {
+        if (ord.paymentMethod) paymentLabel = PAY_LABEL[ord.paymentMethod];
+        if (ord.paymentMethod === "mixed" && ord.mixed) {
+          mixedSplit = { cash: ord.mixed.cash, card: ord.mixed.card, transfer: ord.mixed.transfer };
+        }
+        if (ord.isCancel) statusLabel = "ОТМЕНЕНО";
+        else if (ord.paymentStatus === "paid") statusLabel = "ОПЛАЧЕНО";
+      }
     }
     if (!paymentLabel && b.paymentType) paymentLabel = PAY_LABEL[b.paymentType];
 
@@ -81,7 +99,8 @@ router.post("/print/payment", async (req, res) => {
     }));
 
     const html = buildReceiptHtml({
-      brand: b.restaurantName || "AridaiPOS",
+      brand: brand || b.restaurantName || "AridaiPOS",
+      logo,
       tableName: b.tableName,
       currency,
       receiptNumber: b.orderNumber,
@@ -91,8 +110,11 @@ router.post("/print/payment", async (req, res) => {
       discountTotal: Number(b.discount) || 0,
       discountPercent: Number(b.discountPercent) || 0,
       serviceAmount: Number(b.serviceFee) || 0,
+      servicePercent: Number(b.serviceChargePercent) || 0,
       total: Number(b.totalPrice) || 0,
       paymentLabel,
+      mixedSplit,
+      statusLabel,
       footer: "Спасибо за покупку!",
     });
 
@@ -109,8 +131,8 @@ router.post("/print/test", async (req, res) => {
     const b = req.body || {};
     const device = await resolveDevice(b.printerName);
     if (!device) return res.json({ success: false, error: "Принтер не настроен." });
-    const currency = await getCurrency();
-    const html = buildTestReceiptHtml({ restaurantName: b.restaurantName, currency });
+    const { brand, currency } = await getRestaurant();
+    const html = buildTestReceiptHtml({ restaurantName: brand || b.restaurantName, currency });
     const r = await printViaHook(html, device);
     return res.json(r);
   } catch (e) {
