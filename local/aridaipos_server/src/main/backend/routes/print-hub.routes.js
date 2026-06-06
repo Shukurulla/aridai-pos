@@ -110,7 +110,7 @@ router.post("/print/payment", async (req, res) => {
       discountTotal: Number(b.discount) || 0,
       discountPercent: Number(b.discountPercent) || 0,
       serviceAmount: Number(b.serviceFee) || 0,
-      servicePercent: Number(b.serviceChargePercent) || 0,
+      servicePercent: Number(b.serviceFeePercent ?? b.serviceChargePercent) || 0,
       total: Number(b.totalPrice) || 0,
       paymentLabel,
       mixedSplit,

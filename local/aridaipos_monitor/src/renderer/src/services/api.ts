@@ -1517,12 +1517,14 @@ class ApiService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await this.request<any>('/api/restaurant/settings');
     const d = data.data || {};
+    const currency = d.currency || 'KZT';
+    setCurrency(currency); // serverdan eng yangi valyuta (eski keshlangan emas) → ekran to'g'ri
     return {
       name: d.branchName || d.name || '',
       serviceChargeEnabled: d.serviceChargeEnabled === true,
       serviceChargePercent: Number(d.serviceChargePercent || 0),
       discountPercent: Number(d.discountPercent || 0),
-      currency: d.currency || 'KZT',
+      currency,
     };
   }
 
