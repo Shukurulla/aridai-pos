@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import electronUpdater from "electron-updater";
 import { printHtml, buildTestReceiptHtml, buildReceiptHtml } from "./print.js";
 import { setPrintHook, setPrinter } from "./backend/print-hook.js";
+import { getSyncState } from "./backend/sync/sync-client.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -350,6 +351,18 @@ function registerIpc() {
         /* ignore */
       }
     }
+    // Sessiya yaroqlimi? branchToken yo'q (provisioning ketgan) YOKI sync 401
+    // (TOKEN_INVALID/REVOKED) → sessiya buzuq → renderer login'ga qaytaradi.
+    // Tarmoq xatosi ("fetch failed") sessiyani buzmaydi (offline — normal).
+    let sessionInvalid = false;
+    try {
+      const ss = getSyncState();
+      const tokenErr = /TOKEN_INVALID|TOKEN_REVOKED|unauthorized|\b401\b/i.test(ss.lastSyncError || "");
+      sessionInvalid = !ss.hasBranchToken || tokenErr;
+    } catch {
+      /* sync-client hali tayyor emas — e'tiborsiz */
+    }
+
     return {
       isOnline: heartbeatState.isOnline,
       isBranchLockedOffline: false,
@@ -359,6 +372,7 @@ function registerIpc() {
       lastFullSyncAt: null,
       globalUrl: GLOBAL_URL, // status UI'da ko'rsatish (qaysi serverga ulanyapti)
       localPort: PORT, // LAN porti (POS monitorlar shu yerga ulanadi)
+      sessionInvalid, // true → renderer login'ga qaytaradi (qayta provision kerak)
     };
   });
 

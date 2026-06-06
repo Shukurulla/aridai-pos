@@ -45,6 +45,14 @@ export default function Shell({ auth, onLogout }) {
     }
   }, [])
 
+  // Sessiya buzuq (branchToken yo'q yoki yaroqsiz — sync 401) → login sahifasiga
+  // qaytaramiz (qayta provision kerak). Offline (tarmoq xatosi) sessiyani buzmaydi.
+  useEffect(() => {
+    if (status?.sessionInvalid) {
+      window.aridai.auth.logout().finally(() => onLogout())
+    }
+  }, [status?.sessionInvalid, onLogout])
+
   const handleLogout = async () => {
     if (!confirm('Выйти из Local Server?')) return
     await window.aridai.auth.logout()
