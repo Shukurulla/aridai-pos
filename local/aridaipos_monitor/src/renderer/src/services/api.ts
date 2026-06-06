@@ -1519,6 +1519,22 @@ class ApiService {
     const d = data.data || {};
     const currency = d.currency || 'KZT';
     setCurrency(currency); // serverdan eng yangi valyuta (eski keshlangan emas) → ekran to'g'ri
+    // Eski (stale) localStorage valyutasini ham tuzatamiz — aks holda keyingi ochilishda
+    // getStoredRestaurant() yana "сум"ni o'rnatadi (createSaboyOrder ham shuni chaqiradi).
+    try {
+      if (typeof window !== 'undefined') {
+        const rs = localStorage.getItem('restaurant');
+        if (rs) {
+          const r = JSON.parse(rs);
+          if (r && r.currency !== currency) {
+            r.currency = currency;
+            localStorage.setItem('restaurant', JSON.stringify(r));
+          }
+        }
+      }
+    } catch {
+      /* noop */
+    }
     return {
       name: d.branchName || d.name || '',
       serviceChargeEnabled: d.serviceChargeEnabled === true,

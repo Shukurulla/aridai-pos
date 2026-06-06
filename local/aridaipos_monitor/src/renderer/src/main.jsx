@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { LoginScreen } from '@/components/cashier/screens/Login'
 import { CashierApp } from '@/components/cashier/CashierApp'
 import { pingServer } from '@/services/api'
-import { T } from '@/lib/theme'
+import { T, useCurrency } from '@/lib/theme'
 
 // pos-monitor kassir UI'sini ko'rsatadi. Ma'lumot local-server (aridaipos_server,
 // localhost:4561 yoki Settings'dagi LAN IP) orqali. Server bilan aloqa bo'lmasa —
@@ -117,6 +117,9 @@ function ServerGate({ children }) {
 
 function Root() {
   const { isAuthenticated, isLoading } = useAuth()
+  // Valyutaga obuna — setCurrency() ishlaganda butun daraxt qayta render bo'ladi,
+  // shunda fmt() yangi belgini ko'rsatadi (ekran "сум"da qotib qolmaydi).
+  useCurrency()
   if (isLoading) return <Loading text="Загрузка…" />
   return (
     <div

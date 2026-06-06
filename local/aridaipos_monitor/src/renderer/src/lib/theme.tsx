@@ -1,6 +1,8 @@
 // ─── Theme tokens — Variant B (status-coded warm), POS 13" 1366×768 ──────────
 // Ported from the approved AridaiPOS design (Claude Design handoff).
 
+import { useSyncExternalStore } from 'react';
+
 export const T = {
   bg: '#f4f1ea',
   surface: '#ffffff',
@@ -57,12 +59,36 @@ export const STATUS: Record<StatusKey, { label: string; color: string; bg: strin
 
 // Valyuta — restoran sozlamasidan (login/start'da setCurrency() bilan o'rnatiladi).
 // UZS→сум, KZT→₸, RUB→₽, USD→$. Default ₸ (eski xatti-harakat).
+// MUHIM: setCurrency oddiy module o'zgaruvchini emas, REAKTIV store'ni yangilaydi —
+// valyuta o'zgarsa useCurrency() chaqirgan komponentlar darhol qayta render bo'ladi
+// (aks holda fmt eski qiymatда qotib qolardi: "сум" muammosi).
 let CURRENCY = '₸';
+const currencyListeners = new Set<() => void>();
 export function setCurrency(code?: string): void {
   const c = String(code || '').toUpperCase();
-  CURRENCY = c === 'UZS' ? 'сум' : c === 'RUB' ? '₽' : c === 'USD' ? '$' : c === 'KZT' ? '₸' : CURRENCY;
+  const next =
+    c === 'UZS' ? 'сум' : c === 'RUB' ? '₽' : c === 'USD' ? '$' : c === 'KZT' ? '₸' : CURRENCY;
+  if (next === CURRENCY) return;
+  CURRENCY = next;
+  currencyListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      /* noop */
+    }
+  });
 }
 export const getCurrency = (): string => CURRENCY;
+function subscribeCurrency(cb: () => void): () => void {
+  currencyListeners.add(cb);
+  return () => {
+    currencyListeners.delete(cb);
+  };
+}
+/** Valyuta o'zgarganda chaqiruvchi komponentni (va bolalarini) qayta render qiladi. */
+export function useCurrency(): string {
+  return useSyncExternalStore(subscribeCurrency, getCurrency, getCurrency);
+}
 
 export const fmt = (n: number) => (n || 0).toLocaleString('ru-RU') + ' ' + CURRENCY;
 export const fmtN = (n: number) => (n || 0).toLocaleString('ru-RU');
