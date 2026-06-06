@@ -354,6 +354,11 @@ class ApiService {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
+      // 401 — token yaroqsiz (local server qayta provision qilingan / user yo'q).
+      // Login endpointidan tashqari → sessiyani tugatib login'ga qaytaramiz.
+      if (res.status === 401 && !endpoint.includes("/auth/login") && typeof window !== "undefined") {
+        window.dispatchEvent(new Event("auth:unauthorized"));
+      }
       // Бэкенд отдаёт { success:false, error:{ code, message } }
       const msg =
         error?.error?.message ||

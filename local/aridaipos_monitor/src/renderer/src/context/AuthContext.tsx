@@ -71,6 +71,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  // 401 (token yaroqsiz — local server qayta provision qilingan / user yo'q) →
+  // sessiyani tugatib login sahifasiga qaytaramiz. api.request() shu eventni yuboradi.
+  useEffect(() => {
+    const handler = () => {
+      api.clearToken();
+      setUser(null);
+      setRestaurant(null);
+      setBranch(null);
+      if (typeof window !== 'undefined') localStorage.removeItem('branch');
+      SESS?.clear();
+    };
+    window.addEventListener('auth:unauthorized', handler);
+    return () => window.removeEventListener('auth:unauthorized', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const login = async (phone: string, password: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await api.login(phone, password) as any;
