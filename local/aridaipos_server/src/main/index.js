@@ -215,7 +215,7 @@ setPrinter(printHtml); // backend print-hub (/print/*) shu orqali chop etadi
 // changes (ixtiyoriy): [{ foodId, name, delta, left? }] — berilsa O'ZGARISH cheki
 // (ДОБАВЛЕНО/ОТМЕНЕНО, faqat o'zgargan taomlar). Berilmasa — to'liq "КУХНЯ" cheki
 // (yangi order: barcha taomlar). Har ikkalasi ham povar filtri bo'yicha yo'naltiriladi.
-async function printKitchenReceipt(orderId, changes) {
+async function printKitchenReceipt(orderId, changes, opts) {
   try {
     if (!models?.printer || !models?.printer_login || !models?.order) return;
     const logins = await models.printer_login.find({ role: { $in: COOK_ROLES } });
@@ -263,6 +263,7 @@ async function printKitchenReceipt(orderId, changes) {
           .map((c) => ({ name: c.name, qty: -Number(c.delta), left: c.left }));
         if (!added.length && !cancelled.length) continue;
         html = buildKitchenTicketHtml({
+          title: opts?.title, // mas. "ЗАКАЗ ОТМЕНЁН" (to'liq bekor); aks holda "ИЗМЕНЕНИЕ"
           cookName: login.staff_name,
           tableName,
           waiterName: order.waiter?.name,

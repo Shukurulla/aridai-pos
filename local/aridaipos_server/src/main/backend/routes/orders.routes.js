@@ -502,6 +502,11 @@ router.post("/:id/cancel", async (req, res) => {
     if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Оплаченный заказ нельзя отменить (нужен возврат)" } });
 
     if (!order.isCancel) {
+      // Bekor qilishdan OLDIN aktiv taomlarni olamiz (povar "ОТМЕНЕНО" cheki uchun)
+      const cancelItems = (order.foods || [])
+        .filter((f) => !f.isDeleted && effQty(f) > 0)
+        .map((f) => ({ foodId: String(f.foodId), name: f.foodName, delta: -effQty(f), left: 0 }));
+
       order.isCancel = true;
       order.cancelType = req.body?.cancelType === "void" ? "void" : "cancel";
       order.cancelReason = req.body?.reason || null;
@@ -509,6 +514,12 @@ router.post("/:id/cancel", async (req, res) => {
       order.cancelledAt = new Date();
       order.syncStatus = "pending";
       await order.save();
+
+      // Povarga butun zakaz bekor qilingani — barcha taomlar "ОТМЕНЕНО",
+      // sarlavha "ЗАКАЗ ОТМЕНЁН" (osha stoldagi hamma narsani to'xtatadi).
+      if (cancelItems.length) {
+        firePrintKitchen(String(order._id), cancelItems, { title: "ЗАКАЗ ОТМЕНЁН" });
+      }
     }
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
