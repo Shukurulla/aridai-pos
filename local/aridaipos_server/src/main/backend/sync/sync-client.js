@@ -166,13 +166,15 @@ export async function pullOrders(skipIds = new Set()) {
   }));
   await orderModel.bulkWrite(ops, { ordered: false });
 
-  // Birinchi pull (dastlabki 24h backfill) — print qilmaymiz (storm bo'lmasin).
-  // Keyingi tsikllarda: YANGI + YAQINDA yaratilgan + aktiv order → povar (kuxnya) cheki.
+  // Birinchi pull (dastlabki 24h backfill) — chek chiqarmaymiz (storm bo'lmasin).
   const isFirst = firstOrderPull;
   firstOrderPull = false;
+  const RECENT_MS = 5 * 60 * 1000;
+  const now = Date.now();
+
+  // (1) YANGI (local'da avval yo'q) + YAQINDA yaratilgan + aktiv = WAITER/tashqi order
+  // → povar (kuxnya) cheki. POS o'zi yaratganlar local'da bor → "new" emas → 2x chiqmaydi.
   if (!isFirst) {
-    const RECENT_MS = 5 * 60 * 1000;
-    const now = Date.now();
     for (const o of toApply) {
       if (existingSet.has(String(o._id))) continue; // yangi emas (POS o'zi yaratgan / tahrir)
       if (o.isCancel || o.paymentStatus === "paid") continue;
@@ -184,7 +186,35 @@ export async function pullOrders(skipIds = new Set()) {
     }
   }
 
-  return { changed: toApply.length, ids: applyIds };
+  // (2) Prichek so'rovi (waiter "Счёт" bosgan → checkRequest.requested=true). POS'ga
+  // "print_check_requested" emit qilamiz (POS precheck chop etadi). Dedup: orderId + at
+  // (bitta so'rov bir marta; qayta so'ralsa at o'zgaradi → qayta chiqadi).
+  const checkRequests = [];
+  for (const o of toApply) {
+    const cr = o.checkRequest;
+    const key = String(o._id);
+    if (!cr || cr.requested !== true || !cr.at) {
+      if (cr && cr.requested === false) printedCheckReqs.delete(key); // bekor → keyingi so'rov chiqsin
+      continue;
+    }
+    const at = new Date(cr.at).getTime();
+    const prev = printedCheckReqs.get(key);
+    printedCheckReqs.set(key, at);
+    if (isFirst || prev === at) continue; // birinchi pull (baseline) / allaqachon chiqarilgan
+    if (o.isCancel || o.paymentStatus === "paid") continue;
+    if (!at || now - at > RECENT_MS) continue; // eski so'rov
+    checkRequests.push({
+      orderId: key,
+      orderNumber: o.receiptNumber || o.orderNumber || 0,
+      waiterName: o.waiter?.name || cr.byName || "",
+      requestedAt: cr.at,
+    });
+  }
+  if (printedCheckReqs.size > 500) {
+    for (const [k, at] of printedCheckReqs) if (now - at > 3600000) printedCheckReqs.delete(k);
+  }
+
+  return { changed: toApply.length, ids: applyIds, checkRequests };
 }
 
 // ===== Global'da O'ZGARGAN smenalarni tortish (admin yopdi/ochdi → POS'ga qaytadi) =====
@@ -229,6 +259,7 @@ let lastCounts = null;
 let lastMenuSig = null; // oxirgi menyu signaturasi
 let lastOrderSyncAt = null; // oxirgi order pull vaqti (global soatida, ISO)
 let firstOrderPull = true; // birinchi pull (backfill) — povar chekи chiqarmaymiz (storm)
+const printedCheckReqs = new Map(); // orderId → checkRequest.at (ms) — prichek dedup
 let lastShiftSyncAt = null; // oxirgi shift pull vaqti
 let onMenuChangeCb = null; // menyu o'zgarsa (server.js → socket "menu:updated")
 let onOrdersChangeCb = null; // order o'zgarsa (server.js → socket "order_updated")

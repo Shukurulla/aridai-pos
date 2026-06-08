@@ -108,7 +108,10 @@ export async function startLocalBackend() {
         if (io) io.emit("menu:updated", counts);
       },
       (pulled) => {
-        if (io) io.emit("order_updated", pulled);
+        if (!io) return;
+        io.emit("order_updated", pulled);
+        // Waiter "Счёт" (prichek) so'ragan orderlar → POS precheck chop etadi
+        for (const cr of pulled.checkRequests || []) io.emit("print_check_requested", cr);
       },
       2000,
       (pulledShifts) => {

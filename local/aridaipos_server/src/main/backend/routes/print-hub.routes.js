@@ -73,9 +73,13 @@ router.post("/print/payment", async (req, res) => {
     }
     const { brand, currency, logo } = await getRestaurant();
 
-    // To'lov turi/aralash split/status — order'dan
+    // Prichek (predchek) — to'lanmagan: to'lov turi YO'Q, pastda "ПРЕДВАРИТЕЛЬНЫЙ СЧЁТ".
+    // To'lov cheki — order'dan to'lov turi/aralash split/status.
+    const isPrecheck = b.docType === "precheck";
     let paymentLabel, mixedSplit, statusLabel;
-    if (b.orderId) {
+    if (isPrecheck) {
+      statusLabel = "ПРЕДВАРИТЕЛЬНЫЙ СЧЁТ";
+    } else if (b.orderId) {
       const ord = await orderModel
         .findById(b.orderId)
         .select("paymentMethod mixed paymentStatus isCancel")
@@ -89,7 +93,7 @@ router.post("/print/payment", async (req, res) => {
         else if (ord.paymentStatus === "paid") statusLabel = "ОПЛАЧЕНО";
       }
     }
-    if (!paymentLabel && b.paymentType) paymentLabel = PAY_LABEL[b.paymentType];
+    if (!isPrecheck && !paymentLabel && b.paymentType) paymentLabel = PAY_LABEL[b.paymentType];
 
     const items = (b.items || []).map((it) => ({
       name: it.foodName,
