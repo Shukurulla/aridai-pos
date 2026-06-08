@@ -11,6 +11,7 @@ import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import expenseModel from "../models/expense.model.js";
 import advanceModel from "../models/advance.model.js";
+import { firePrintKitchen } from "../print-hook.js";
 
 // Global'dan kelgan hujjatni lokal Mongo'ga BIR XIL _id bilan yozadi (mirror).
 // MUHIM: Model orqali cast (ObjectId'lar) → keyin RAW collection bulkWrite.
@@ -153,11 +154,37 @@ export async function pullOrders(skipIds = new Set()) {
   const toApply = orders.filter((o) => !skip.has(String(o._id)));
   if (!toApply.length) return { changed: 0 };
 
+  // Qaysилари local'da YANGI (avval yo'q edi) — bu WAITER/tashqi (telefon, boshqa POS)
+  // orderlar. POS o'zi yaratgan orderlar local'da ALLAQACHON bor (POST /orders) →
+  // "new" emas → povar chekи ikki marta chiqmaydi.
+  const applyIds = toApply.map((o) => String(o._id));
+  const existing = await orderModel.find({ _id: { $in: applyIds } }).select("_id").lean();
+  const existingSet = new Set(existing.map((o) => String(o._id)));
+
   const ops = toApply.map((o) => ({
     replaceOne: { filter: { _id: o._id }, replacement: { ...o, syncStatus: "synced" }, upsert: true },
   }));
   await orderModel.bulkWrite(ops, { ordered: false });
-  return { changed: toApply.length, ids: toApply.map((o) => String(o._id)) };
+
+  // Birinchi pull (dastlabki 24h backfill) — print qilmaymiz (storm bo'lmasin).
+  // Keyingi tsikllarda: YANGI + YAQINDA yaratilgan + aktiv order → povar (kuxnya) cheki.
+  const isFirst = firstOrderPull;
+  firstOrderPull = false;
+  if (!isFirst) {
+    const RECENT_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    for (const o of toApply) {
+      if (existingSet.has(String(o._id))) continue; // yangi emas (POS o'zi yaratgan / tahrir)
+      if (o.isCancel || o.paymentStatus === "paid") continue;
+      const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      if (!created || now - created > RECENT_MS) continue; // eski → o'tkazamiz
+      const hasItems = Array.isArray(o.foods) && o.foods.some((f) => !f?.isDeleted && (Number(f?.quantity) || 0) > 0);
+      if (!hasItems) continue;
+      firePrintKitchen(String(o._id)); // to'liq "КУХНЯ" cheki (yangi order)
+    }
+  }
+
+  return { changed: toApply.length, ids: applyIds };
 }
 
 // ===== Global'da O'ZGARGAN smenalarni tortish (admin yopdi/ochdi → POS'ga qaytadi) =====
@@ -201,6 +228,7 @@ let lastSyncError = null;
 let lastCounts = null;
 let lastMenuSig = null; // oxirgi menyu signaturasi
 let lastOrderSyncAt = null; // oxirgi order pull vaqti (global soatida, ISO)
+let firstOrderPull = true; // birinchi pull (backfill) — povar chekи chiqarmaymiz (storm)
 let lastShiftSyncAt = null; // oxirgi shift pull vaqti
 let onMenuChangeCb = null; // menyu o'zgarsa (server.js → socket "menu:updated")
 let onOrdersChangeCb = null; // order o'zgarsa (server.js → socket "order_updated")
