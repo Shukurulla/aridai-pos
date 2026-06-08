@@ -55,18 +55,35 @@ router.put("/:id/close", authMiddleware, async (req, res) => {
     }
     if (!shift.isActive) return res.status(400).json({ status: "error", message: "Смена уже закрыта" });
 
-    const orders = await orderModel.find({ shift: id });
+    let orders = await orderModel.find({ shift: id });
 
-    // Ochiq (to'lanmagan, bekor qilinmagan) orderlar bo'lsa — smena yopilmaydi.
-    // Aks holda tushum/kassa noto'g'ri hisoblanadi.
-    const openOrders = orders.filter((o) => !o.isCancel && o.paymentStatus !== "paid").length;
-    if (openOrders > 0) {
+    // Ochiq (to'lanmagan, bekor qilinmagan) orderlar.
+    const openList = orders.filter((o) => !o.isCancel && o.paymentStatus !== "paid");
+    // force=false → smena yopilmaydi (tushum/kassa noto'g'ri hisoblanmasligi uchun).
+    // force=true (admin) → ochiq orderlarni avtomatik bekor qilib, smenani majburan yopadi
+    //   (osilib qolgan smenalarni tozalash uchun).
+    if (openList.length > 0 && !req.body.force) {
       return res.status(400).json({
         status: "error",
         code: "OPEN_ORDERS",
-        openOrders,
-        message: `Нельзя закрыть смену: есть открытые заказы (${openOrders}). Завершите оплату или отмените их.`,
+        openOrders: openList.length,
+        message: `Нельзя закрыть смену: есть открытые заказы (${openList.length}). Завершите оплату или отмените их.`,
       });
+    }
+    if (openList.length > 0 && req.body.force) {
+      await orderModel.updateMany(
+        { _id: { $in: openList.map((o) => o._id) } },
+        {
+          $set: {
+            isCancel: true,
+            cancelType: "cancel",
+            cancelReason: "Закрытие смены администратором",
+            cancelledBy: req.userData._id,
+            cancelledAt: new Date(),
+          },
+        },
+      );
+      orders = await orderModel.find({ shift: id }); // totals to'g'ri bo'lishi uchun qayta o'qiymiz
     }
 
     const sum = (arr, f) => arr.reduce((s, o) => s + (f(o) || 0), 0);

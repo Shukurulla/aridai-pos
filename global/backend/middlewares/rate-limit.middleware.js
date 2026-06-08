@@ -6,7 +6,7 @@ import { audit } from "../utils/audit.js";
 
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}:${req.body?.phone || "?"}`,
@@ -27,7 +27,9 @@ export const loginLimiter = rateLimit({
 
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: (req) => (req.method === "GET" ? 300 : 100),
+  // Bitta filialda bir nechta POS + waiter telefonlar + 2s sync (push/pull) bitta
+  // IP ortidan ko'p so'rov yuboradi → cheklov yuqori (testing + multi-POS uchun).
+  max: (req) => (req.method === "GET" ? 5000 : 2000),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userData?._id?.toString() || req.ip,

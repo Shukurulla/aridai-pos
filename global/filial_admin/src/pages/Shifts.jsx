@@ -33,13 +33,14 @@ export default function Shifts() {
   }, [branchId]);
   useEffect(() => { load(); }, [load]);
 
-  const active = shifts.find((s) => s.isActive);
+  // Bitta filialda BIR nechta aktiv smena osilib qolishi mumkin (offline/online,
+  // POS+admin) — HAMMASINI ko'rsatamiz va har birini yopish mumkin.
+  const actives = shifts.filter((s) => s.isActive);
   const past = shifts.filter((s) => !s.isActive);
 
-  // Aktiv smena uchun jonli totals (orderlardan)
-  const liveTotals = (() => {
-    if (!active) return null;
-    const mine = orders.filter((o) => shiftIdOf(o) === String(active._id));
+  // Smena uchun jonli totals (orderlardan)
+  const liveFor = (shiftId) => {
+    const mine = orders.filter((o) => shiftIdOf(o) === String(shiftId));
     const live = mine.filter((o) => !o.isCancel);
     const paid = live.filter((o) => o.paymentStatus === "paid");
     // Naqd tushum (mixed bo'lsa faqat naqd qismi) — kassada kutilayotgan summa uchun
@@ -54,7 +55,7 @@ export default function Shifts() {
       cashRevenue,
       open: live.filter((o) => o.paymentStatus !== "paid").length,
     };
-  })();
+  };
 
   const openShift = async () => {
     const cash = await modal.prompt({
@@ -82,13 +83,20 @@ export default function Shifts() {
     const mine = orders.filter((o) => shiftIdOf(o) === String(s._id) && !o.isCancel);
     const openCount = mine.filter((o) => o.paymentStatus !== "paid").length;
 
-    // Ochiq (to'lanmagan) orderlar bo'lsa — yopishga ruxsat yo'q
+    // Ochiq (to'lanmagan) orderlar bo'lsa — majburan yopishni so'raymiz (admin).
+    // Tasdiqlasa: ochiq orderlar bekor qilinadi va smena yopiladi (force).
+    let force = false;
     if (openCount > 0) {
-      await modal.alert({
-        title: "Смену нельзя закрыть",
-        message: `Есть открытые заказы: ${openCount}.\nЗавершите оплату или отмените их, затем закройте смену.`,
+      const ok = await modal.confirm({
+        title: "Есть открытые заказы",
+        message:
+          `В этой смене ${openCount} открытых (неоплаченных) заказов.\n` +
+          `Закрыть смену принудительно? Открытые заказы будут отменены.`,
+        okText: "Отменить заказы и закрыть",
+        danger: true,
       });
-      return;
+      if (!ok) return;
+      force = true;
     }
 
     const paid = mine.filter((o) => o.paymentStatus === "paid");
@@ -103,11 +111,14 @@ export default function Shifts() {
 
     const cash = await modal.prompt({
       title: `Закрыть смену${s.shiftNumber ? ` №${s.shiftNumber}` : ""}`,
-      message:
-        `Выручка за смену: ${fmt(revenue)} ₸\n` +
-        `Наличными: ${fmt(cashRevenue)} ₸ · Касса на старте: ${fmt(s.openingCash)} ₸\n` +
-        `Ожидается в кассе: ${fmt(expected)} ₸\n\n` +
-        `Пересчитайте фактическую сумму наличных в кассе:`,
+      message: force
+        ? `Открытые заказы (${openCount}) будут отменены.\n` +
+          `Выручка (оплачено): ${fmt(revenue)} ₸ · Наличными: ${fmt(cashRevenue)} ₸\n\n` +
+          `Сумма наличных в кассе:`
+        : `Выручка за смену: ${fmt(revenue)} ₸\n` +
+          `Наличными: ${fmt(cashRevenue)} ₸ · Касса на старте: ${fmt(s.openingCash)} ₸\n` +
+          `Ожидается в кассе: ${fmt(expected)} ₸\n\n` +
+          `Пересчитайте фактическую сумму наличных в кассе:`,
       defaultValue: String(expected),
       numeric: true,
       suffix: "₸",
@@ -117,7 +128,7 @@ export default function Shifts() {
     setBusy(true);
     setErr("");
     try {
-      await api.shiftClose(s._id, { closingCash: cash });
+      await api.shiftClose(s._id, { closingCash: cash, force });
       await load();
     } catch (e) {
       const msg = e.message || "Не удалось закрыть смену";
@@ -136,7 +147,7 @@ export default function Shifts() {
           <button className="btn ghost btn-sm icon-btn" onClick={load} disabled={loading}>
             <Icon name="refresh" size={15} /> Обновить
           </button>
-          {!active && (
+          {actives.length === 0 && (
             <button className="btn primary icon-btn" onClick={openShift} disabled={busy || loading}>
               <Icon name="play" size={16} /> Открыть смену
             </button>
@@ -150,27 +161,43 @@ export default function Shifts() {
         <div className="card"><div className="empty">Загрузка…</div></div>
       ) : (
         <>
-          {active ? (
-            <div className="shift-active">
-              <div className="shift-active-head">
-                <div>
-                  <span className="live"><span className="dot" /> Смена открыта</span>
-                  <div className="muted" style={{ marginTop: 4 }}>Открыта: {dt(active.openedAt)} · Касса на старте: {fmt(active.openingCash)} ₸</div>
-                </div>
-                <button className="btn danger icon-btn" onClick={() => closeShift(active)} disabled={busy}>
-                  <Icon name="stop" size={15} /> Закрыть смену
-                </button>
-              </div>
-              <div className="shift-stats">
-                <div><div className="v">{fmt(liveTotals.revenue)} ₸</div><div className="l">Выручка</div></div>
-                <div><div className="v">{fmt(liveTotals.ordersCount)}</div><div className="l">Заказов</div></div>
-                <div><div className="v">{fmt(liveTotals.open)}</div><div className="l">Открытых</div></div>
-              </div>
-            </div>
-          ) : (
+          {actives.length === 0 ? (
             <div className="card">
               <div className="empty">Нет открытой смены. Нажмите «Открыть смену», чтобы начать.</div>
             </div>
+          ) : (
+            <>
+              {actives.length > 1 && (
+                <div className="alert err" style={{ marginBottom: 12 }}>
+                  Открыто несколько смен ({actives.length}) — так быть не должно. Закройте лишние.
+                </div>
+              )}
+              {actives.map((a) => {
+                const lt = liveFor(a._id);
+                return (
+                  <div className="shift-active" key={a._id} style={{ marginBottom: 12 }}>
+                    <div className="shift-active-head">
+                      <div>
+                        <span className="live">
+                          <span className="dot" /> Смена{a.shiftNumber ? ` №${a.shiftNumber}` : ""} открыта
+                        </span>
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          Открыта: {dt(a.openedAt)} · Касса на старте: {fmt(a.openingCash)} ₸
+                        </div>
+                      </div>
+                      <button className="btn danger icon-btn" onClick={() => closeShift(a)} disabled={busy}>
+                        <Icon name="stop" size={15} /> Закрыть смену
+                      </button>
+                    </div>
+                    <div className="shift-stats">
+                      <div><div className="v">{fmt(lt.revenue)} ₸</div><div className="l">Выручка</div></div>
+                      <div><div className="v">{fmt(lt.ordersCount)}</div><div className="l">Заказов</div></div>
+                      <div><div className="v">{fmt(lt.open)}</div><div className="l">Открытых</div></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           )}
 
           <h2 className="sub-h">История смен</h2>
