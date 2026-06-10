@@ -6,6 +6,9 @@ import localConfigModel from "../models/local_config.model.js";
 import orderModel from "../models/order.model.js";
 import { buildReceiptHtml, buildTestReceiptHtml } from "../../receipt-template.js";
 import { printViaHook } from "../print-hook.js";
+import QRCode from "qrcode";
+import { cashbackQrSessionModel } from "../models/keshbek.model.js";
+import { keshbekConfig, qrText } from "../utils/keshbek.js";
 
 // Printer-hub HTTP API — POS monitor (aridaipos_monitor) shu yerga ulanadi
 // (localhost:4561, /print/*, /printers, /health — auth YO'Q, lokal ishonchli).
@@ -102,6 +105,22 @@ router.post("/print/payment", async (req, res) => {
       lineTotal: (Number(it.price) || 0) * (Number(it.quantity) || 0),
     }));
 
+    // KESHBEK QR — to'lov chekida (prichek emas). Sessiya to'lov payti yaratilgan
+    // (offline ham). QR → WhatsApp bot → mijoz telefonini yuboradi → balans GLOBAL'da.
+    let cashbackQr = null;
+    if (!isPrecheck && b.orderId) {
+      try {
+        const sess = await cashbackQrSessionModel.findOne({ orderId: b.orderId });
+        if (sess && sess.status === "pending" && sess.expiresAt > new Date()) {
+          const { config: kcfg } = await keshbekConfig(sess.restaurantId);
+          const dataUrl = await QRCode.toDataURL(qrText(sess, kcfg), { margin: 1, width: 240 });
+          cashbackQr = { dataUrl, earnAmount: sess.earnAmount };
+        }
+      } catch (qe) {
+        console.warn("[keshbek] chek QR xato:", qe?.message);
+      }
+    }
+
     const html = buildReceiptHtml({
       brand: brand || b.restaurantName || "AridaiPOS",
       logo,
@@ -119,6 +138,7 @@ router.post("/print/payment", async (req, res) => {
       paymentLabel,
       mixedSplit,
       statusLabel,
+      cashbackQr,
       footer: "Спасибо за покупку!",
     });
 

@@ -50,6 +50,7 @@ export function buildReceiptHtml(data = {}) {
     paymentLabel,
     mixedSplit, // { cash, card, transfer } — aralash to'lov bo'lganda
     statusLabel, // "ОПЛАЧЕНО" / "ОТМЕНЕНО" — bo'lsa footer o'rniga (pastda)
+    cashbackQr, // { dataUrl, earnAmount } — keshbek QR (toggle yoqiq bo'lsa)
     currency = "UZS",
     footer = "Спасибо за покупку!",
   } = data;
@@ -102,6 +103,15 @@ export function buildReceiptHtml(data = {}) {
         : paymentLabel
           ? leaderRow(paymentLabel, `${fmt(total)} ${CUR}`, { italic: true })
           : ""
+    }
+    ${
+      cashbackQr
+        ? `${sep}<div style="text-align:center;margin-top:6px;">
+          <div style="font-weight:900;font-size:14px;">КЕШБЭК ${fmt(cashbackQr.earnAmount)} ${CUR}</div>
+          <img src="${cashbackQr.dataUrl}" style="width:34mm;height:34mm;margin:4px 0;" />
+          <div style="font-size:11px;line-height:1.3;">Отсканируйте QR и отправьте номер<br/>телефона — кешбэк зачислится на баланс</div>
+        </div>`
+        : ""
     }
     ${sep}
     <div style="text-align:center;font-weight:900;font-size:${statusLabel ? "17px" : "14px"};margin-top:10px;">${esc(statusLabel || footer)}</div>

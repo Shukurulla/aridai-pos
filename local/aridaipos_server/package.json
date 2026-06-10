@@ -1,6 +1,6 @@
 {
   "name": "aridai-local-server",
-  "version": "0.4.18",
+  "version": "0.4.19",
   "private": true,
   "type": "module",
   "main": "src/main/index.js",
@@ -26,6 +26,7 @@
     "mongoose": "^9.6.2",
     "multer": "^2.1.1",
     "pdf-to-printer": "^5.8.0",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "uuid": "^11.0.3"

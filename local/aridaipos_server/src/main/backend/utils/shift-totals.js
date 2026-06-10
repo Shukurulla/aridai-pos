@@ -45,6 +45,8 @@ export function computeShiftTotals(orders) {
       t.cardRevenue += o.mixed?.card || 0;
       t.transferRevenue += o.mixed?.transfer || 0;
       t.kaspiRevenue += o.mixed?.kaspi || 0;
+    } else if (m === "cashback") {
+      // To'liq keshbek bilan to'langan — pul kassaga kirmaydi (cashbackUsed'da hisoblanadi)
     } else {
       t.cashRevenue += total; // noma'lum usul → naqd deb hisoblaymiz (yo'qolmasin)
     }

@@ -9,6 +9,7 @@ import serviceModel from "../models/service.model.js";
 import discountModel from "../models/discount.model.js";
 import usersModel from "../models/users.model.js";
 import { ingredientModel, stockModel, stockMovementModel } from "../models/sklad.model.js";
+import { cashbackQrSessionModel } from "../models/keshbek.model.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import expenseModel from "../models/expense.model.js";
@@ -194,9 +195,9 @@ router.put("/service", async (req, res) => {
 router.post("/push", async (req, res) => {
   try {
     const branchId = String(req.branch._id);
-    const { orders = [], shifts = [], expenses = [], advances = [], movements = [] } = req.body;
+    const { orders = [], shifts = [], expenses = [], advances = [], movements = [], qrSessions = [] } = req.body;
 
-    const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, movements: 0, rejected: [] };
+    const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, movements: 0, qrSessions: 0, rejected: [] };
 
     // Bitta hujjatni filial + versiya tekshiruvi bilan apply qiluvchi yordamchi.
     // return true → hisobga olindi (apply yoki idempotent); false → rad etildi.
@@ -262,6 +263,22 @@ router.post("/push", async (req, res) => {
         { upsert: true },
       );
       accepted.movements++;
+    }
+
+    // KESHBEK QR sessiyalar — append-only (offline earn deferred): insert-if-absent.
+    // Capture (balans qo'shish) faqat GLOBAL'da bot orqali bo'ladi — EZMAYMIZ.
+    for (const q of qrSessions) {
+      if (String(q.branch) !== branchId) {
+        accepted.rejected.push({ type: "qrSession", id: String(q._id), reason: "TENANT_MISMATCH" });
+        continue;
+      }
+      const exists = await cashbackQrSessionModel.findById(q._id).lean();
+      if (exists) {
+        accepted.qrSessions++; // idempotent (capture holatini saqlaymiz)
+        continue;
+      }
+      await cashbackQrSessionModel.create({ ...q, syncStatus: "synced" });
+      accepted.qrSessions++;
     }
 
     if (accepted.orders || accepted.shifts || accepted.expenses || accepted.advances) {

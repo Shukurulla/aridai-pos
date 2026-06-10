@@ -12,6 +12,7 @@ import orderModel from "../models/order.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { computeShiftTotals } from "../utils/shift-totals.js";
+import { createEarnSession } from "../utils/keshbek.js";
 import { audit } from "../utils/audit.js";
 
 // ============================================================
@@ -386,6 +387,7 @@ router.post("/orders/:id/pay", async (req, res) => {
     }
 
     await order.save();
+    createEarnSession(order); // KESHBEK earn QR sessiya (toggle yoqiq bo'lsa) — fire-and-forget
     await audit.log({ kind: "order_paid", restaurantId: req.userData.restaurantId, branchId: branch, actor: { type: "user", id: String(req.userData._id), role: req.userData.role }, message: `${order.receiptNumber}: ${paymentMethod} ${order.totalPrice}` });
     return res.status(200).json({ status: "success", data: order });
   } catch (e) {

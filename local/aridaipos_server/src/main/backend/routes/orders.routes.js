@@ -11,6 +11,7 @@ import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { checkManagerPin, kitchenStarted, pinError } from "../utils/manager-pin.js";
 import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
+import { createEarnSession } from "../utils/keshbek.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
@@ -678,17 +679,27 @@ router.post("/:id/pay", async (req, res) => {
     const prevPaid = (order.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
     const required = Math.max(0, (order.totalPrice || 0) - prevPaid);
 
-    // TO'LIQ SUMMA VALIDATSIYA — mixed (aralash) uchun split = qolgan summa bo'lishi shart
+    // TO'LIQ SUMMA VALIDATSIYA — mixed (aralash) uchun split = qolgan summa bo'lishi
+    // shart. KESHBEK qismi (s.cashback) ham yig'indiga kiradi — POS uni spend
+    // tasdiqlangach yuboradi (balans GLOBAL'da allaqachon kamaytirilgan).
     if (paymentType === "mixed") {
       const s = paymentSplit || {};
-      const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0);
+      const cb = Number(s.cashback) || 0;
+      const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0) + cb;
       if (Math.abs(sum - required) >= 100) {
         return res.status(400).json({
           success: false,
           error: { message: `Сумма оплаты (${sum}) должна равняться итогу заказа (${required})` },
         });
       }
-      order.mixed = { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0, kaspi: 0, cashback: 0 };
+      order.mixed = { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0, kaspi: 0, cashback: cb };
+      if (cb > 0) {
+        order.cashback = {
+          ...(order.cashback?.toObject?.() || order.cashback || {}),
+          spent: cb,
+          clientPhone: req.body.cashbackPhone || order.cashback?.clientPhone || null,
+        };
+      }
     }
 
     const payerId = req.userData.id || req.userData.userId || null;
@@ -728,6 +739,7 @@ router.post("/:id/pay", async (req, res) => {
     order.paidBy = payerId;
     order.syncStatus = "pending";
     await order.save();
+    createEarnSession(order); // KESHBEK earn QR sessiya (toggle yoqiq bo'lsa) — fire-and-forget
 
     // Chek POS tomonidan chop etiladi (PrinterAPI.printPayment → POST /print/payment).
     // Backend bu yerda chop ETMAYDI — aks holda ikki marta chiqardi.
@@ -888,6 +900,7 @@ router.post("/:id/pay-items", async (req, res) => {
     }
     order.syncStatus = "pending";
     await order.save();
+    if (isFinal) createEarnSession(order); // KESHBEK earn QR — yakuniy to'lovda
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({
