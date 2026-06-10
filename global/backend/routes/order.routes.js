@@ -102,6 +102,10 @@ router.post("/create", authMiddleware, async (req, res) => {
       return res
         .status(404)
         .json({ status: "error", message: "Bunday filial topilmadi" });
+    // Tenant guard — branch shu restoranga tegishli bo'lishi shart
+    if (String(findBranch.restaurant) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
 
     const findShift = await shiftModel.findOne({ _id: shift, branch });
     if (!findShift)
@@ -109,7 +113,20 @@ router.post("/create", authMiddleware, async (req, res) => {
         .status(404)
         .json({ status: "error", message: "Bunday smena topilmadi" });
 
-    const order = await orderModel.create(req.body);
+    // Mijoz pul/status maydonlarini MAJBURLAY OLMAYDI — server o'zi belgilaydi/hisoblaydi.
+    const orderData = {
+      ...req.body,
+      restaurantId: req.userData.restaurantId, // tenant — har doim serverdan
+      paymentStatus: "pending",
+      isCancel: false,
+      cancelType: null,
+    };
+    delete orderData.totalPrice;
+    delete orderData.subTotal;
+    delete orderData.discountAmount;
+    recalcOrder(orderData); // total server-side qayta hisoblanadi (client'ga ishonmaymiz)
+
+    const order = await orderModel.create(orderData);
 
     return res.status(200).json({ status: "success", data: order });
   } catch (error) {
@@ -378,32 +395,34 @@ router.get("/:id", authMiddleware, async (req, res) => {
 router.put("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { branch, shift } = req.body;
-
-    if (branch) {
-      const findBranch = await branchesModel.findById(branch);
-      if (!findBranch)
-        return res
-          .status(404)
-          .json({ status: "error", message: "Bunday filial topilmadi" });
+    const order = await orderModel.findById(id);
+    if (!order) {
+      return res.status(404).json({ status: "error", message: "Bunday order topilmadi" });
+    }
+    // Tenant guard — boshqa restoran orderini tahrir qila olmaydi
+    if (String(order.restaurantId) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
+    if (order.isCancel || order.paymentStatus === "paid") {
+      return res.status(400).json({ status: "error", message: "Заказ закрыт" });
     }
 
-    if (shift) {
-      const findShift = await shiftModel.findById(shift);
-      if (!findShift)
-        return res
-          .status(404)
-          .json({ status: "error", message: "Bunday smena topilmadi" });
+    // FAQAT xavfsiz metadata. Pul/status maydonlari (paymentStatus, totalPrice,
+    // subTotal, discountAmount, serviceAmount, foods, isCancel, shift, branch,
+    // restaurantId, mixed, paymentMethod) mijoz tomonidan O'ZGARTIRILMAYDI — ular
+    // uchun alohida endpointlar bor (/items, /pay, /cancel, /request-check).
+    if (req.body.note !== undefined) order.note = req.body.note;
+    if (req.body.guestCount !== undefined) order.guestCount = Number(req.body.guestCount) || 0;
+
+    // Stol ko'chirish — faqat SHU filial ichidagi stol
+    const newTable = req.body.table || req.body.tableId;
+    if (newTable && String(newTable) !== String(order.table)) {
+      const t = await tableModel.findOne({ _id: newTable, branch: order.branch });
+      if (!t) return res.status(404).json({ status: "error", message: "Стол не найден" });
+      order.table = t._id;
     }
 
-    const order = await orderModel.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
-    if (!order)
-      return res
-        .status(404)
-        .json({ status: "error", message: "Bunday order topilmadi" });
-
+    await order.save();
     return res.status(200).json({ status: "success", data: order });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });
@@ -413,16 +432,28 @@ router.put("/:id", authMiddleware, async (req, res) => {
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-
-    const order = await orderModel.findByIdAndDelete(id);
-    if (!order)
-      return res
-        .status(404)
-        .json({ status: "error", message: "Bunday order topilmadi" });
-
-    return res
-      .status(200)
-      .json({ status: "success", message: "Order o'chirildi" });
+    const order = await orderModel.findById(id);
+    if (!order) {
+      return res.status(404).json({ status: "error", message: "Bunday order topilmadi" });
+    }
+    // Tenant guard — boshqa restoran orderini o'chira olmaydi
+    if (String(order.restaurantId) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
+    // To'langan orderni o'chirib bo'lmaydi (moliyaviy yozuv) — refund kerak
+    if (order.paymentStatus === "paid") {
+      return res.status(400).json({ status: "error", message: "Оплаченный заказ нельзя удалить" });
+    }
+    // HARD-DELETE EMAS (loyiha qarori: no-hard-delete) — soft cancel (sync global→local propagatsiya)
+    if (!order.isCancel) {
+      order.isCancel = true;
+      order.cancelType = "cancel";
+      order.cancelReason = "Удалён (отмена)";
+      order.cancelledBy = req.userData._id;
+      order.cancelledAt = new Date();
+      await order.save();
+    }
+    return res.status(200).json({ status: "success", message: "Заказ отменён" });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });
   }
