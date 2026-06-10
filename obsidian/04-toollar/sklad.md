@@ -2,7 +2,7 @@
 tags: [tool]
 created: 2026-05-28
 toolKey: sklad
-status: 📝
+status: ✅ implemented (2026-06-10)
 default: OFF
 ---
 
@@ -11,7 +11,7 @@ default: OFF
 ## Meta
 
 - **Key:** `sklad`
-- **Status:** 📝 dizayn
+- **Status:** ✅ implemented (2026-06-10) — backend+UI+sync; low-alert push va cook-mobile ko'rinishi keyinroq
 - **Default:** OFF
 - **Version:** 1
 - **requires:** core
