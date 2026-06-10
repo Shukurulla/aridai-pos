@@ -5,6 +5,8 @@ import authMiddleware from "../middlewares/auth.middleware.js";
 import { signBranchToken } from "../utils/token.js";
 import { hashPassword } from "../utils/password.js";
 import { audit } from "../utils/audit.js";
+import { possizSessionModel } from "../models/possiz-session.model.js";
+import orderModel from "../models/order.model.js";
 
 const router = express.Router();
 
@@ -124,6 +126,7 @@ router.patch("/:id/possiz", authMiddleware, async (req, res) => {
       return res.status(403).json({ status: "error", code: "FORBIDDEN", message: "Faqat admin yoki owner" });
     }
     const active = req.body.active === true || req.body.active === "true";
+    const wasActive = !!branch.possiz?.active;
     branch.possiz = {
       active,
       activatedBy: active ? req.userData._id : null,
@@ -132,8 +135,44 @@ router.patch("/:id/possiz", authMiddleware, async (req, res) => {
     if (active) {
       branch.currentMode = "possiz";
       branch.modeChangedAt = new Date();
+    } else if (wasActive) {
+      // BUG FIX: ilgari OFF'da currentMode "possiz"da qotib qolardi
+      branch.currentMode = "online";
+      branch.modeChangedAt = new Date();
     }
     await branch.save();
+
+    // POSSIZ SESSIYA AUDITI (possiz-rejim.md): ON → ochish; OFF → yopish + davr
+    // statistikasi (orderlar/to'lovlar/tushum) yozuvga qotiriladi.
+    try {
+      if (active && !wasActive) {
+        await possizSessionModel.create({
+          restaurantId: branch.restaurant,
+          branch: branch._id,
+          startedBy: req.userData._id,
+          startedAt: new Date(),
+        });
+      } else if (!active && wasActive) {
+        const sess = await possizSessionModel.findOne({ branch: branch._id, endedAt: null }).sort({ startedAt: -1 });
+        if (sess) {
+          const period = { $gte: sess.startedAt, $lte: new Date() };
+          const created = await orderModel.find({
+            branch: branch._id,
+            createdAt: period,
+            $or: [{ createdInMode: "possiz" }, { source: "possiz_mobile" }],
+          }).select("paymentStatus totalPrice");
+          sess.endedBy = req.userData._id;
+          sess.endedAt = new Date();
+          sess.ordersCreated = created.length;
+          const paid = created.filter((o) => o.paymentStatus === "paid");
+          sess.paymentsAccepted = paid.length;
+          sess.revenue = paid.reduce((sm, o) => sm + (o.totalPrice || 0), 0);
+          await sess.save();
+        }
+      }
+    } catch (se) {
+      console.warn("[possiz] session audit xato:", se?.message);
+    }
     await audit.log({
       kind: active ? "possiz_activated" : "possiz_deactivated",
       restaurantId: branch.restaurant,
@@ -185,6 +224,21 @@ router.delete("/:id", restoranMiddleware, async (req, res) => {
     return res.status(200).json({ status: "success", message: "Filial o'chirildi (soft delete)" });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// Possiz sessiyalar tarixi (audit) — admin/owner
+router.get("/:id/possiz-sessions", authMiddleware, async (req, res) => {
+  try {
+    const branch = await branchesModel.findById(req.params.id);
+    if (!branch) return res.status(404).json({ status: "error", code: "BRANCH_NOT_FOUND" });
+    if (String(branch.restaurant) !== String(req.userPayload.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_BOUNDARY_VIOLATION" });
+    }
+    const list = await possizSessionModel.find({ branch: branch._id }).sort({ startedAt: -1 }).limit(50);
+    return res.status(200).json({ status: "success", data: list });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e.message });
   }
 });
 

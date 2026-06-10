@@ -7,6 +7,7 @@ import foodModel from "../models/food.model.js";
 import tableModel from "../models/table.model.js";
 import { itemLineAmount } from "../utils/order-calc.js";
 import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
+import { receiptUrl } from "./receipt.routes.js";
 import serviceModel from "../models/service.model.js";
 import usersModel from "../models/users.model.js";
 import { emitToBranch } from "../utils/socket.js";
@@ -510,6 +511,21 @@ router.patch("/:id/cancel", authMiddleware, async (req, res) => {
     return res.status(200).json({ status: "success", data: populated });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// ===== Elektron chek havolasi (possiz/mobil) — signed public URL =====
+router.get("/:id/receipt-link", authMiddleware, async (req, res) => {
+  try {
+    const order = await orderModel.findById(req.params.id).select("restaurantId");
+    if (!order) return res.status(404).json({ status: "error", message: "Bunday order topilmadi" });
+    if (String(order.restaurantId) !== String(req.userData.restaurantId)) {
+      return res.status(403).json({ status: "error", code: "TENANT_MISMATCH" });
+    }
+    const base = process.env.QR_PUBLIC_URL || `${req.protocol}://${req.get("host")}`;
+    return res.json({ status: "success", data: { url: receiptUrl(order._id, base) } });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e.message });
   }
 });
 

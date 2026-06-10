@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/order.dart';
 import '../../services/api_service.dart';
@@ -71,6 +72,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (mounted) _snack(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _checkBusy = false);
+    }
+  }
+
+  /// Elektron chekni brauzerda ochish (possiz'da chek apparat o'rnida —
+  /// mijozga ko'rsatiladi yoki havola ulashiladi).
+  Future<void> _openReceipt() async {
+    try {
+      final url = await _api.receiptLink(_order.id);
+      if (url.isEmpty) throw Exception('Чек недоступен');
+      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok) throw Exception('Не удалось открыть чек');
+    } catch (e) {
+      _snack(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -173,6 +187,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     _statusHeader(),
                     const SizedBox(height: 14),
                     _receiptCard(),
+                    const SizedBox(height: 12),
+                    // Elektron chek (possiz: chek apparat o'rnida)
+                    OutlinedButton.icon(
+                      onPressed: _openReceipt,
+                      icon: const Icon(Icons.receipt_long, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.ink,
+                        side: const BorderSide(color: AppColors.line),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      label: Text('Электронный чек',
+                          style: sansStyle(size: 13, weight: FontWeight.w600, color: AppColors.ink)),
+                    ),
                   ],
                 ),
               ),

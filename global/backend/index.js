@@ -21,6 +21,7 @@ import skladRouter from "./routes/sklad.routes.js";
 import keshbekRouter from "./routes/keshbek.routes.js";
 import qrOrderRouter, { qrPageRouter } from "./routes/qr-order.routes.js";
 import keldiKettiRouter from "./routes/keldi-ketti.routes.js";
+import { receiptPageRouter } from "./routes/receipt.routes.js";
 import syncRouter from "./routes/sync.routes.js";
 import restaurantRouter from "./routes/restoraurants.routes.js";
 import systemRouter from "./routes/system.routes.js";
@@ -80,6 +81,7 @@ app.use("/api/keshbek", keshbekRouter); // KESHBEK — public bot + branch proxy
 app.use("/api/qr-order", qrOrderRouter); // QR ORDER — public menyu/so'rov + kassir approve (requireFeature)
 app.use("/qr", qrPageRouter); // QR ORDER mijoz sahifasi (stol QR'i shu URL'ga olib keladi)
 app.use("/api/keldi-ketti", keldiKettiRouter); // KELDI-KETTI — davomat+maosh (requireFeature)
+app.use("/receipt", receiptPageRouter); // ELEKTRON CHEK (signed, public) — possiz/mobil uchun
 
 // ===== 404 + error handler =====
 app.use((req, res) => res.status(404).json({ status: "error", code: "NOT_FOUND" }));

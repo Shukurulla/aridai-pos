@@ -865,6 +865,13 @@ class ApiService {
   Future<Map<String, dynamic>> kkCheckOut() =>
       _writeJson('post', '/keldi-ketti/check-out', {});
 
+  /// Elektron chek havolasi (signed, public) — possiz/mobil: brauzerda mijozga
+  /// ko'rsatish yoki ulashish uchun.
+  Future<String> receiptLink(String orderId) async {
+    final d = await _getMap('/orders/$orderId/receipt-link');
+    return (d['url'] ?? '').toString();
+  }
+
   Future<void> logout() async {
     _token = null;
     _currentUser = null;

@@ -5,6 +5,16 @@ created: 2026-05-28
 
 # 🔴 Possiz (cook+waiter) rejim
 
+> [!success] Implementatsiya (2026-06-10): v1 yadro tayyor
+> Variant A (mobil internet) — **koordinator = GLOBAL VPS** (alohida telefon-
+> koordinator kerak emas; /place allaqachon global'da, FCM push ishlaydi).
+> ✅ possiz_session auditi (toggle ON/OFF → ochish/yopish + orderlar/to'lovlar/
+> tushum statistikasi), ✅ toggle OFF'da currentMode→online (bug tuzatildi),
+> ✅ ELEKTRON CHEK: /receipt/:orderId/:sig (signed HTML, "ВЫДАН В РЕЖИМЕ POSSIZ"
+> belgisi + keshbek QR) + waiter mobil "Электронный чек" tugmasi (brauzerda
+> mijozga ko'rsatish/ulashish). Qoldi: koordinatorlikni o'tkazish (Variant B),
+> lokal Wi-Fi fallback, SQLite lokal saqlash.
+
 ## Texnik holat
 
 Filial **possiz** deyiladi qachonki:
