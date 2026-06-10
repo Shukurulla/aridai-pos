@@ -97,6 +97,12 @@ export const api = {
   // KESHBEK — balanslar + harakatlar (toggle o'chiq → 404 FEATURE_DISABLED)
   keshbekBalances: () => request("GET", "/keshbek/balances"),
   keshbekMovements: (phone) => request("GET", `/keshbek/movements/${encodeURIComponent(phone)}`),
+
+  // QR ORDER — kutayotgan so'rovlar + approve/reject + stol QR (toggle o'chiq → 404)
+  qrPending: () => request("GET", "/qr-order/pending"),
+  qrApprove: (id) => request("POST", `/qr-order/${id}/approve`),
+  qrReject: (id, reason) => request("POST", `/qr-order/${id}/reject`, { reason }),
+  tableQr: (tableId, body) => request("POST", `/qr-order/tables/${tableId}/qr`, body || {}),
 };
 
 export function translateError(err) {

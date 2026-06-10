@@ -11,6 +11,7 @@ import Foods from "./Foods";
 import Tables from "./Tables";
 import Sklad from "./Sklad";
 import Keshbek from "./Keshbek";
+import QrOrders from "./QrOrders";
 
 const NAV = [
   { id: "orders", label: "Заказы", ic: "receipt" },
@@ -21,6 +22,7 @@ const NAV = [
   { id: "tables", label: "Столы и кабины", ic: "chair" },
   { id: "sklad", label: "Склад", ic: "box" },
   { id: "keshbek", label: "Кешбэк", ic: "money" },
+  { id: "qrorders", label: "QR заказы", ic: "image" },
 ];
 const SOON = [
   { id: "safe", label: "Сейф", ic: "safe" },
@@ -107,6 +109,7 @@ export default function Shell() {
           {page === "tables" && <Tables />}
           {page === "sklad" && <Sklad />}
           {page === "keshbek" && <Keshbek />}
+          {page === "qrorders" && <QrOrders />}
         </div>
       </div>
     </div>

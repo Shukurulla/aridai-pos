@@ -19,6 +19,7 @@ import ownerRouter from "./routes/owner.routes.js";
 import posRouter from "./routes/pos.routes.js";
 import skladRouter from "./routes/sklad.routes.js";
 import keshbekRouter from "./routes/keshbek.routes.js";
+import qrOrderRouter, { qrPageRouter } from "./routes/qr-order.routes.js";
 import syncRouter from "./routes/sync.routes.js";
 import restaurantRouter from "./routes/restoraurants.routes.js";
 import systemRouter from "./routes/system.routes.js";
@@ -75,6 +76,8 @@ app.use("/api/pos", posRouter); // POS / waiter terminali (MVP)
 app.use("/api/sync", syncRouter); // lokal backend ↔ global sync (branchToken)
 app.use("/api/sklad", skladRouter); // SKLAD (inventory) — requireFeature("sklad"), toggle o'chiq → 404
 app.use("/api/keshbek", keshbekRouter); // KESHBEK — public bot + branch proxy + admin (requireFeature)
+app.use("/api/qr-order", qrOrderRouter); // QR ORDER — public menyu/so'rov + kassir approve (requireFeature)
+app.use("/qr", qrPageRouter); // QR ORDER mijoz sahifasi (stol QR'i shu URL'ga olib keladi)
 
 // ===== 404 + error handler =====
 app.use((req, res) => res.status(404).json({ status: "error", code: "NOT_FOUND" }));
