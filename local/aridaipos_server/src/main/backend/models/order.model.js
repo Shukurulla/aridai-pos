@@ -136,6 +136,11 @@ const orderSchema = new mongoose.Schema(
     paidAt: { type: Date },
     paidBy: { type: mongoose.Schema.Types.ObjectId, ref: "user" },
 
+    // ===== Vozvrat (refund) — to'langan orderni qaytarish =====
+    refundedAt: { type: Date, default: null },
+    refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+    refundReason: { type: String, default: null },
+
     mixed: {
       cash: { type: Number, default: 0 },
       card: { type: Number, default: 0 },

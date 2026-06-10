@@ -632,4 +632,27 @@ router.post("/:id/pay", async (req, res) => {
   }
 });
 
+// ===== Vozvrat (refund) — to'langan orderni qaytarish (paymentStatus → refunded) =====
+// Refunded order revenue/kassaga kirmaydi (paid emas) → smena totals avtomatik to'g'ri.
+// syncStatus pending → global'ga ham push bo'ladi.
+router.post("/:id/refund", async (req, res) => {
+  try {
+    const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
+    if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
+    if (order.paymentStatus !== "paid") {
+      return res.status(400).json({ success: false, error: { message: "Возврат возможен только для оплаченного заказа" } });
+    }
+    order.paymentStatus = "refunded";
+    order.refundedAt = new Date();
+    order.refundedBy = req.userData.id || req.userData.userId || req.userData._id || null;
+    order.refundReason = req.body?.reason || null;
+    order.syncStatus = "pending";
+    await order.save();
+    const tableDoc = order.table ? await tableModel.findById(order.table) : null;
+    return res.json({ success: true, data: mapOrder(order, tableDoc) });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: { message: e.message } });
+  }
+});
+
 export default router;

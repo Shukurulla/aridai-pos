@@ -10,6 +10,7 @@ export function computeShiftTotals(orders) {
   const list = Array.isArray(orders) ? orders : [];
   const notCancelled = list.filter((o) => !o.isCancel);
   const paid = notCancelled.filter((o) => o.paymentStatus === "paid");
+  const refunded = notCancelled.filter((o) => o.paymentStatus === "refunded");
 
   const t = {
     ordersCount: notCancelled.length,
@@ -22,6 +23,9 @@ export function computeShiftTotals(orders) {
     discountTotal: 0,
     serviceTotal: 0,
     cancelledOrders: list.length - notCancelled.length,
+    // Vozvrat — qaytarilgan orderlar revenue'ga KIRMAYDI (paid emas), alohida ko'rsatkich.
+    refundsCount: refunded.length,
+    refundsTotal: refunded.reduce((s, o) => s + (o.totalPrice || 0), 0),
   };
 
   for (const o of paid) {

@@ -393,6 +393,28 @@ router.post("/orders/:id/pay", async (req, res) => {
   }
 });
 
+// ===== Vozvrat (refund) — to'langan orderni qaytarish (paymentStatus → refunded) =====
+// Refunded order revenue'ga kirmaydi (paid emas) → kassa/tushum avtomatik to'g'ri.
+router.post("/orders/:id/refund", async (req, res) => {
+  try {
+    const branch = branchId(req);
+    const order = await orderModel.findOne({ _id: req.params.id, branch });
+    if (!order) return res.status(404).json({ status: "error", code: "ORDER_NOT_FOUND" });
+    if (order.paymentStatus !== "paid") {
+      return res.status(400).json({ status: "error", code: "NOT_PAID", message: "Возврат возможен только для оплаченного заказа" });
+    }
+    order.paymentStatus = "refunded";
+    order.refundedAt = new Date();
+    order.refundedBy = req.userData._id;
+    order.refundReason = req.body?.reason || null;
+    await order.save();
+    await audit.log({ kind: "order_refunded", restaurantId: req.userData.restaurantId, branchId: branch, actor: { type: "user", id: String(req.userData._id), role: req.userData.role }, message: `${order.receiptNumber}: refund ${order.totalPrice}` });
+    return res.status(200).json({ status: "success", data: order });
+  } catch (e) {
+    return sendErr(res, e);
+  }
+});
+
 // Bekor qilish (void/cancel)
 router.post("/orders/:id/cancel", async (req, res) => {
   try {
