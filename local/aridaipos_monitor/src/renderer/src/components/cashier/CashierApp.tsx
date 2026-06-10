@@ -895,6 +895,20 @@ export function CashierApp() {
     [loadData],
   );
 
+  const handleRefund = useCallback(
+    async (orderId: string, reason?: string) => {
+      try {
+        await api.refundOrder(orderId, reason);
+        await loadData();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Не удалось оформить возврат';
+        alert(msg);
+        throw error;
+      }
+    },
+    [loadData],
+  );
+
   const currentOrder = useMemo(
     () => orders.find((o) => o._id === currentOrderId) || null,
     [orders, currentOrderId],
@@ -979,6 +993,7 @@ export function CashierApp() {
     onChangeItemQty: handleChangeItemQty,
     onCancelItem: handleCancelItem,
     onCancelOrder: handleCancelOrder,
+    onRefund: handleRefund,
     onShiftChanged: (s) => {
       setActiveShift(s);
       setShiftLoaded(true);

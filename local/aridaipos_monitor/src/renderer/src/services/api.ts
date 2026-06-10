@@ -1202,6 +1202,14 @@ class ApiService {
     });
   }
 
+  // Vozvrat — to'langan orderni qaytarish (paymentStatus → refunded).
+  async refundOrder(orderId: string, reason?: string): Promise<void> {
+    await this.request(`/api/orders/${orderId}/refund`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    });
+  }
+
   // #2: shu order uchun chegирма % (backend updateOrder → recalculateTotals).
   // FAQAT shu zakazga ta'sir qiladi; chekda ko'rsatiladi.
   async setOrderDiscount(orderId: string, discountPercent: number): Promise<void> {

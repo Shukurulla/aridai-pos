@@ -55,5 +55,7 @@ export interface ScreenCtx {
   onCancelItem: (orderId: string, itemId: string, reason?: string) => Promise<void>;
   // Отменить весь заказ (isCancel). Оплаченный нельзя.
   onCancelOrder: (orderId: string, reason?: string) => Promise<void>;
+  // Возврат оплаченного заказа (paymentStatus → refunded).
+  onRefund: (orderId: string, reason?: string) => Promise<void>;
   onLogout: () => void;
 }

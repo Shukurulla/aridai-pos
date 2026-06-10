@@ -12,6 +12,7 @@ type ModalState =
   | { kind: 'qty'; it: OrderItem; value: number }
   | { kind: 'cancelItem'; it: OrderItem }
   | { kind: 'cancelOrder' }
+  | { kind: 'refund' }
   | null;
 
 export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
@@ -29,6 +30,7 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
 
   const now = Date.now();
   const isPaid = order.paymentStatus === 'paid';
+  const isRefunded = order.paymentStatus === 'refunded';
   const items = order.items.filter((i) => !i.isDeleted);
   const activeItems = items.filter((i) => i.status !== 'cancelled');
   const paidItems = activeItems.filter((i) => i.isPaid);
@@ -66,6 +68,10 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
     setModalErr(null);
     setModal({ kind: 'cancelOrder' });
   };
+  const askRefund = () => {
+    setModalErr(null);
+    setModal({ kind: 'refund' });
+  };
 
   const runModal = async () => {
     if (!modal || busy) return;
@@ -81,6 +87,11 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
         await ctx.onCancelOrder(order._id);
         setModal(null);
         ctx.go('orders'); // bekor qilingach ro'yxatga qaytamiz
+        return;
+      } else if (modal.kind === 'refund') {
+        await ctx.onRefund(order._id);
+        setModal(null);
+        ctx.go('orders'); // qaytarilgach ro'yxatga qaytamiz
         return;
       }
       setModal(null);
@@ -468,7 +479,7 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
               borderTop: `2px solid ${T.borderStrong}`,
               padding: 14,
               display: 'grid',
-              gridTemplateColumns: isPaid ? '1fr 2fr' : '1fr 1fr 2fr',
+              gridTemplateColumns: isPaid || isRefunded ? '1fr 2fr' : '1fr 1fr 2fr',
               gap: 10,
               flexShrink: 0,
             }}
@@ -476,21 +487,21 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
             <Btn onClick={() => ctx.onPrint(order)} height={68} fontSize={18}>
               <NavIcon kind="printer" /> Печать чека
             </Btn>
-            {!isPaid && (
+            {!isPaid && !isRefunded && (
               <Btn onClick={() => ctx.go('addItems')} height={68} fontSize={18}>
                 <NavIcon kind="plus" /> Добавить
               </Btn>
             )}
-            {!isPaid ? (
+            {!isPaid && !isRefunded ? (
               <CTA height={68} fontSize={22} onClick={() => ctx.go('payment')}>
                 <NavIcon kind="check" color="#fff" /> ПРИНЯТЬ ОПЛАТУ
               </CTA>
-            ) : (
+            ) : isRefunded ? (
               <div
                 style={{
                   height: 68,
-                  background: T.paidBg,
-                  color: T.paid,
+                  background: T.cancelledBg,
+                  color: T.cancelled,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -499,8 +510,29 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                   letterSpacing: 0.5,
                 }}
               >
-                ЗАКАЗ ПОЛНОСТЬЮ ОПЛАЧЕН ✓
+                ВОЗВРАТ ОФОРМЛЕН ↩
               </div>
+            ) : (
+              <button
+                onClick={askRefund}
+                style={{
+                  height: 68,
+                  background: T.cancelledBg,
+                  color: T.cancelled,
+                  border: 'none',
+                  fontSize: 20,
+                  fontWeight: 900,
+                  letterSpacing: 0.5,
+                  cursor: 'pointer',
+                  fontFamily: T.font,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <NavIcon kind="x" color={T.cancelled} /> ВОЗВРАТ
+              </button>
             )}
           </div>
         </div>
@@ -688,6 +720,20 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
               </>
             )}
 
+            {modal.kind === 'refund' && (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 900, color: T.cancelled }}>Оформить возврат?</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>
+                  {order.orderType === 'saboy' ? 'Собой' : order.tableName}
+                  {order.isOffline ? ' · Офлайн' : ` · №${order.orderNumber}`}
+                </div>
+                <div style={{ fontSize: 14, color: T.textMuted, lineHeight: 1.5 }}>
+                  Оплаченный заказ будет возвращён клиенту. Сумма НЕ войдёт в выручку смены
+                  (наличные возвращаются из кассы).
+                </div>
+              </>
+            )}
+
             {modalErr && (
               <div style={{ background: T.cancelledBg, color: T.cancelled, padding: '10px 14px', fontWeight: 700, fontSize: 14 }}>
                 {modalErr}
@@ -715,7 +761,9 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                     ? 'Сохранить'
                     : modal.kind === 'cancelItem'
                       ? 'Отменить блюдо'
-                      : 'Отменить заказ'}
+                      : modal.kind === 'refund'
+                        ? 'Оформить возврат'
+                        : 'Отменить заказ'}
               </button>
             </div>
           </div>
