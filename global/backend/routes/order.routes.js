@@ -5,6 +5,7 @@ import orderModel from "../models/order.model.js";
 import shiftModel from "../models/shift.model.js";
 import foodModel from "../models/food.model.js";
 import tableModel from "../models/table.model.js";
+import { itemLineAmount } from "../utils/order-calc.js";
 import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
 import serviceModel from "../models/service.model.js";
 import usersModel from "../models/users.model.js";
@@ -73,7 +74,7 @@ function effQty(item) {
 //   service = subTotal × svc%;  discount = (subTotal + service) × disc%;  total = subTotal + tariff + service − discount
 function recalcOrder(order) {
   const foods = Array.isArray(order.foods) ? order.foods : [];
-  const subTotal = foods.reduce((s, it) => s + (it.foodPrice || 0) * effQty(it), 0);
+  const subTotal = foods.reduce((s, it) => s + itemLineAmount(it), 0); // soatlik ham to'g'ri
   const servicePercent = order.service?.waived ? 0 : order.service?.percent || 0;
   const serviceAmount = servicePercent > 0 ? round((subTotal * servicePercent) / 100) : 0;
   if (order.service) order.service.amount = serviceAmount;

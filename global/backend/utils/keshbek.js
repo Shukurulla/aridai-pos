@@ -4,6 +4,7 @@
 // skanerlab telefonini bot orqali yuborganda balans oshadi.
 import crypto from "crypto";
 import restaurantsModel from "../models/restaurants.model.js";
+import orderModel from "../models/order.model.js";
 import {
   cashbackBalanceModel,
   cashbackMovementModel,
@@ -82,6 +83,13 @@ export async function capturePhone(token, rawPhone) {
     return { error: "EXPIRED" };
   }
 
+  // Qaytarilgan (refund) order cheki — earn YO'Q, sessiya expired
+  const ord = await orderModel.findById(session.orderId).select("paymentStatus");
+  if (ord && ord.paymentStatus === "refunded") {
+    await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { status: "expired", capturedPhone: null, capturedAt: null } });
+    return { error: "EXPIRED" };
+  }
+
   const { config } = await keshbekConfig(session.restaurantId);
   const bal = await cashbackBalanceModel.findOneAndUpdate(
     { restaurantId: session.restaurantId, clientPhone: phone },
@@ -112,6 +120,15 @@ export async function capturePhone(token, rawPhone) {
 export async function spendCashback({ restaurantId, branch, phone, amount, orderId, by }) {
   const amt = Math.round(Number(amount) || 0);
   if (amt <= 0) return { error: "INVALID_AMOUNT" };
+  // IDEMPOTENT: shu order uchun spend allaqachon bo'lgan (retry/timeout) —
+  // balansni IKKINCHI marta kamaytirmaymiz, o'sha natijani qaytaramiz.
+  if (orderId) {
+    const dup = await cashbackMovementModel.findOne({ refOrderId: orderId, direction: "spend" });
+    if (dup) {
+      const cur = await cashbackBalanceModel.findOne({ restaurantId, clientPhone: dup.clientPhone });
+      return { balance: cur?.balance || 0, spent: dup.amount, already: true };
+    }
+  }
   const bal = await cashbackBalanceModel.findOneAndUpdate(
     { restaurantId, clientPhone: phone, balance: { $gte: amt } },
     { $inc: { balance: -amt, totalSpent: amt }, $set: { lastActivityAt: new Date() } },
@@ -128,4 +145,43 @@ export async function spendCashback({ restaurantId, branch, phone, amount, order
     createdBy: by || null,
   });
   return { balance: bal.balance, spent: amt };
+}
+
+// Vozvrat: (1) shu order uchun YECHILGAN keshbekni balansga qaytarish — IDEMPOTENT
+// (reason:"refund" kompensatsiya movement bo'lsa qayta qaytarmaydi; capture-earn
+// movement reason=null bo'lgani uchun chalkashmaydi); (2) pending earn QR sessiyani
+// EXPIRED qilish (qaytarilgan chekdan keshbek yig'ilmasin).
+export async function refundCashbackForOrder(restaurantId, orderId) {
+  const out = { restoredSpend: 0, sessionVoided: false };
+  try {
+    const spend = await cashbackMovementModel.findOne({ refOrderId: orderId, direction: "spend" });
+    if (spend) {
+      const comp = await cashbackMovementModel.findOne({ refOrderId: orderId, direction: "earn", reason: "refund" });
+      if (!comp) {
+        await cashbackBalanceModel.updateOne(
+          { restaurantId, clientPhone: spend.clientPhone },
+          { $inc: { balance: spend.amount, totalSpent: -spend.amount }, $set: { lastActivityAt: new Date() } },
+          { upsert: true },
+        );
+        await cashbackMovementModel.create({
+          restaurantId,
+          branch: spend.branch,
+          clientPhone: spend.clientPhone,
+          direction: "earn",
+          amount: spend.amount,
+          refOrderId: orderId,
+          reason: "refund",
+        });
+        out.restoredSpend = spend.amount;
+      }
+    }
+    const v = await cashbackQrSessionModel.updateOne(
+      { orderId, status: "pending" },
+      { $set: { status: "expired" } },
+    );
+    out.sessionVoided = v.modifiedCount > 0;
+  } catch (e) {
+    console.warn("[keshbek] refund revert xato:", e?.message);
+  }
+  return out;
 }

@@ -11,7 +11,7 @@ import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { checkManagerPin, kitchenStarted, pinError } from "../utils/manager-pin.js";
 import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
-import { createEarnSession, spendViaGlobal } from "../utils/keshbek.js";
+import { createEarnSession, spendViaGlobal, refundViaGlobal, voidLocalEarnSession } from "../utils/keshbek.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
@@ -93,6 +93,9 @@ function mapOrder(o, tableDoc) {
     discount: o.discountAmount || 0,
     discountPercent: o.discount?.percent || 0,
     grandTotal: o.totalPrice || 0,
+    // Qisman to'lov oqimi: услуга waived (POS filial %' fallback'ini O'CHIRSIN)
+    serviceWaived: o.service?.waived === true,
+    paidAmount: (o.payments || []).reduce((s, p) => s + (p.amount || 0), 0),
     hasHourlyCharge: false,
     hourlyChargeAmount: 0,
     createdAt: o.createdAt,
@@ -275,7 +278,7 @@ router.post("/merge", async (req, res) => {
 
     const target = await orderModel.findOne({ _id: targetOrderId, branch });
     if (!target) return res.status(404).json({ success: false, error: { message: "Основной заказ не найден" } });
-    if (target.paymentStatus === "paid" || target.isCancel) {
+    if (target.paymentStatus !== "pending" || target.isCancel) {
       return res.status(400).json({ success: false, error: { message: "Основной заказ закрыт" } });
     }
 
@@ -283,7 +286,7 @@ router.post("/merge", async (req, res) => {
     const sources = await orderModel.find({
       _id: { $in: srcIds },
       branch,
-      paymentStatus: { $ne: "paid" },
+      paymentStatus: "pending", // partiallyPaid/refunded merge YO'Q (to'langan itemlar 2x undirilardi)
       isCancel: { $ne: true },
     });
     if (sources.length === 0) {
@@ -399,7 +402,7 @@ router.post("/:id/items", async (req, res) => {
   try {
     const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
-    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") return res.status(400).json({ success: false, error: { message: order.paymentStatus === "refunded" ? "Заказ возвращён — изменения невозможны" : "Заказ уже оплачен" } });
 
     const newFoods = await buildFoods(req.body.items, req.userData.branch);
     // SKLAD: qo'shilayotgan taomlar uchun O1 tekshiruv
@@ -435,7 +438,7 @@ router.patch("/:id", async (req, res) => {
   try {
     const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
-    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") return res.status(400).json({ success: false, error: { message: order.paymentStatus === "refunded" ? "Заказ возвращён — изменения невозможны" : "Заказ уже оплачен" } });
 
     const { discountPercent, serviceChargePercent } = req.body;
 
@@ -466,7 +469,7 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
   try {
     const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
-    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") return res.status(400).json({ success: false, error: { message: order.paymentStatus === "refunded" ? "Заказ возвращён — изменения невозможны" : "Заказ уже оплачен" } });
 
     const item = order.foods.id(req.params.itemId);
     if (!item) return res.status(404).json({ success: false, error: { message: "Блюдо не найдено" } });
@@ -526,7 +529,7 @@ router.delete("/:id/items/:itemId", async (req, res) => {
   try {
     const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
-    if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") return res.status(400).json({ success: false, error: { message: order.paymentStatus === "refunded" ? "Заказ возвращён — изменения невозможны" : "Заказ уже оплачен" } });
     if (order.isCancel) return res.status(400).json({ success: false, error: { message: "Заказ отменён" } });
 
     const item = order.foods.id(req.params.itemId);
@@ -582,6 +585,15 @@ router.post("/:id/cancel", async (req, res) => {
     const order = await orderModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
     if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Оплаченный заказ нельзя отменить (нужен возврат)" } });
+    if (order.paymentStatus === "refunded") return res.status(400).json({ success: false, error: { message: "Заказ уже возвращён" } });
+    // Qisman to'lov BOR — bekor qilishda yig'ilgan pul hisobotdan yo'qoladi (firibgarlik
+    // teshigi). Avval qolgan to'lovni yakunlab, keyin VOZVRAT qilinsin.
+    if (order.paymentStatus === "partiallyPaid" || (order.payments || []).length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Есть частичная оплата — примите остаток и оформите возврат, либо обратитесь к администратору" },
+      });
+    }
 
     if (!order.isCancel) {
       // Bekor qilishdan OLDIN aktiv taomlarni olamiz (povar "ОТМЕНЕНО" cheki uchun)
@@ -638,8 +650,8 @@ router.post("/:id/pay", async (req, res) => {
     const order = await orderModel.findOne({ _id: req.params.id, branch });
     if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
     if (order.isCancel) return res.status(400).json({ success: false, error: { message: "Заказ отменён" } });
-    if (order.paymentStatus === "paid") {
-      return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") {
+      return res.status(400).json({ success: false, error: { message: order.paymentStatus === "refunded" ? "Заказ возвращён" : "Заказ уже оплачен" } });
     }
 
     // Услуга = stol xizmati → FAQAT dineIn. To'lov payti filial servisidan stamp
@@ -684,8 +696,18 @@ router.post("/:id/pay", async (req, res) => {
     // tasdiqlangach yuboradi (balans GLOBAL'da allaqachon kamaytirilgan).
     if (paymentType === "mixed") {
       const s = paymentSplit || {};
+      // Komponentlar MANFIY bo'lishi mumkin emas (manfiy cash bilan keshbek drenaji blok)
+      for (const k of ["cash", "card", "click", "cashback"]) {
+        const v = s[k];
+        if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
+          return res.status(400).json({ success: false, error: { message: "Суммы оплаты не могут быть отрицательными" } });
+        }
+      }
       const cb = Number(s.cashback) || 0;
       const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0) + cb;
+      if (cb > required) {
+        return res.status(400).json({ success: false, error: { message: "Кешбэк не может превышать сумму к оплате" } });
+      }
       if (Math.abs(sum - required) >= 100) {
         return res.status(400).json({
           success: false,
@@ -882,6 +904,12 @@ router.post("/:id/pay-items", async (req, res) => {
     let mixedEntry = null;
     if (paymentType === "mixed") {
       const s = paymentSplit || {};
+      for (const k of ["cash", "card", "click"]) {
+        const v = s[k];
+        if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
+          return res.status(400).json({ success: false, error: { message: "Суммы оплаты не могут быть отрицательными" } });
+        }
+      }
       const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0);
       if (Math.abs(sum - amount) >= 100) {
         return res.status(400).json({
@@ -921,11 +949,28 @@ router.post("/:id/pay-items", async (req, res) => {
     if (isFinal) createEarnSession(order); // KESHBEK earn QR — yakuniy to'lovda
 
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
+    // POS PartialPaymentSession shakli (CashierApp qisman CHEK chop etadi):
+    // paidItems[{foodName, quantity, price}], subtotal, paymentType (kepket).
+    const lastPay = order.payments[order.payments.length - 1];
     return res.json({
       success: true,
       data: {
         order: mapOrder(order, tableDoc),
-        paymentSession: order.payments[order.payments.length - 1],
+        paymentSession: {
+          sessionId: String(lastPay._id),
+          paidItems: selected.map((f) => ({
+            itemId: String(f._id),
+            foodName: f.foodName,
+            quantity: effQty(f),
+            price: f.isHourly ? f.hourlyFinalAmount || 0 : f.foodPrice,
+            subtotal: lineAmount(f),
+          })),
+          subtotal: amount,
+          serviceCharge: 0,
+          total: amount,
+          paymentType,
+          paidAt: lastPay.paidAt,
+        },
       },
     });
   } catch (e) {
@@ -947,6 +992,25 @@ router.post("/:id/refund", async (req, res) => {
     // filialda talab qilinmaydi)
     const chk = await checkManagerPin(order.branch, req.body?.pin);
     if (!chk.ok) return pinError(res, req.body?.pin);
+
+    // Keshbek bilan to'langan qism bor — balans GLOBAL'da qaytarilishi SHART
+    // (faqat online; muvaffaqiyatsiz bo'lsa vozvrat RAD — mijoz keshbegi yo'qolmasin)
+    if ((order.cashback?.spent || 0) > 0) {
+      try {
+        const r = await refundViaGlobal(order._id);
+        if (r.json?.status !== "success") {
+          return res.status(502).json({ success: false, error: { message: "Не удалось вернуть кешбэк — попробуйте позже" } });
+        }
+      } catch {
+        return res.status(503).json({
+          success: false,
+          error: { code: "KESHBEK_OFFLINE", message: "Возврат с кешбэком доступен только онлайн" },
+        });
+      }
+    } else {
+      refundViaGlobal(order._id).catch(() => {}); // earn sessiyani global'da ham void (fire-and-forget)
+    }
+    voidLocalEarnSession(order._id); // chek QR endi chiqmasin
 
     order.paymentStatus = "refunded";
     order.refundedAt = new Date();

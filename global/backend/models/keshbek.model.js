@@ -30,6 +30,7 @@ const cashbackMovementSchema = new mongoose.Schema(
     direction: { type: String, enum: ["earn", "spend"], required: true },
     amount: { type: Number, required: true, min: 0 },
     refOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "order", default: null },
+    reason: { type: String, default: null }, // null=oddiy earn/spend; "refund"=vozvrat kompensatsiyasi
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
   },
   { timestamps: true },

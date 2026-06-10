@@ -10,8 +10,13 @@ import { Icon } from "../icons";
 // 3) Payroll (oy → hisoblash → выплатить)
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU");
 const hm = (d) => (d ? new Date(d).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—");
-const today = () => new Date().toISOString().slice(0, 10);
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+// LOKAL sana — backend dayOf() bilan bir xil (UTC emas; tungi smenada
+// toISOString ertangi/kechagi kunga sakrab davomat "yo'qolardi")
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const thisMonth = () => today().slice(0, 7);
 
 const TYPE_RU = {
   daily: "Дневная ставка",

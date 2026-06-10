@@ -94,8 +94,10 @@ async function printOrderReceipt(
   const oDiscP = Number((order as { discountPercent?: number }).discountPercent || 0);
   // Услуга = STOL XIZMATI → saboy/takeaway uchun UMUMAN yo'q (backend bilan bir xil).
   const isDineIn = order.orderType !== 'saboy' && order.orderType !== 'takeaway';
-  const eSvcP = !isDineIn ? 0 : oSvcP > 0 ? oSvcP : br.en ? br.pct : 0;
-  const eDiscP = oDiscP > 0 ? oDiscP : br.disc > 0 ? br.disc : 0;
+  // Qisman to'langan order — услуга waived (server): fallback qo'shilmasin
+  const partialFlow = order.paymentStatus === 'partiallyPaid';
+  const eSvcP = !isDineIn || partialFlow ? 0 : oSvcP > 0 ? oSvcP : br.en ? br.pct : 0;
+  const eDiscP = partialFlow ? 0 : oDiscP > 0 ? oDiscP : br.disc > 0 ? br.disc : 0;
   const _svcP = eSvcP;
   const _discP = eDiscP;
   const _svcFee = !isDineIn
@@ -768,17 +770,12 @@ export function CashierApp() {
           const ppSub = ps.subtotal || sub;
           // услуга/chegirma — order'da % bo'lsa o'sha, bo'lmasa filial sozlamasi.
           // Qisman to'lovda ham shu qism summasiga услуга qo'shiladi.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const _o = o as any;
-          const _br = brSvcRef.current;
-          // Услуга = STOL XIZMATI → saboy/takeaway uchun yo'q (backend bilan bir xil).
-          const _isDineIn = _o?.orderType !== 'saboy' && _o?.orderType !== 'takeaway';
-          const _svcP = !_isDineIn
-            ? 0
-            : Number(_o?.serviceChargePercent || 0) || (_br.en ? _br.pct : 0);
-          const _discP = Number(_o?.discountPercent || 0) || (_br.disc > 0 ? _br.disc : 0);
-          const _svcFee = _svcP > 0 ? Math.round(ppSub * (_svcP / 100)) : 0;
-          const _discAmt = _discP > 0 ? Math.round(ppSub * (_discP / 100)) : 0;
+          // QISMAN to'lov UI shartnomasi: услуга/chegirma OLINMAYDI (server waive
+          // qilgan) — chek ham faqat taomlar summasini ko'rsatadi.
+          const _svcP = 0;
+          const _discP = 0;
+          const _svcFee = 0;
+          const _discAmt = 0;
           PrinterAPI.printPayment({
             orderId: o._id,
             orderNumber: o.orderNumber,

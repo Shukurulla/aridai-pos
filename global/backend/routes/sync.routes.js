@@ -253,15 +253,26 @@ router.post("/push", async (req, res) => {
       }
       const exists = await stockMovementModel.findById(m._id).lean();
       if (exists) {
-        accepted.movements++; // idempotent — allaqachon qo'llangan
+        // Yarim qo'llangan (create bo'lgan, $inc bo'lmagan — server o'rtada yiqilgan)
+        // bo'lsa balansга yetkazamiz; aks holda to'liq idempotent skip.
+        if (exists.applied === false) {
+          await stockModel.updateOne(
+            { branch: m.branch, ingredientId: m.ingredientId },
+            { $inc: { balance: Number(m.delta) || 0 }, $set: { lastMovementAt: new Date(), restaurantId: m.restaurantId } },
+            { upsert: true },
+          );
+          await stockMovementModel.updateOne({ _id: m._id }, { $set: { applied: true } });
+        }
+        accepted.movements++;
         continue;
       }
-      await stockMovementModel.create({ ...m, syncStatus: "synced" });
+      await stockMovementModel.create({ ...m, syncStatus: "synced", applied: false });
       await stockModel.updateOne(
         { branch: m.branch, ingredientId: m.ingredientId },
         { $inc: { balance: Number(m.delta) || 0 }, $set: { lastMovementAt: new Date(), restaurantId: m.restaurantId } },
         { upsert: true },
       );
+      await stockMovementModel.updateOne({ _id: m._id }, { $set: { applied: true } });
       accepted.movements++;
     }
 

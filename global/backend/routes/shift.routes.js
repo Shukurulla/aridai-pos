@@ -75,6 +75,16 @@ router.put("/:id/close", authMiddleware, async (req, res) => {
       });
     }
     if (openList.length > 0 && req.body.force) {
+      // Qisman to'langan orderlar majburan bekor qilinsa yig'ilgan pul hisobotdan
+      // YO'QOLADI — force ham ularni o'tkazmaydi (avval refund/yakunlash kerak).
+      const partials = openList.filter((o) => o.paymentStatus === "partiallyPaid" || (o.payments || []).length > 0);
+      if (partials.length > 0) {
+        return res.status(400).json({
+          status: "error",
+          code: "PARTIAL_PAID_OPEN",
+          message: `Есть заказы с частичной оплатой (${partials.length}) — оформите возврат или завершите оплату, затем закрывайте смену.`,
+        });
+      }
       await orderModel.updateMany(
         { _id: { $in: openList.map((o) => o._id) } },
         {

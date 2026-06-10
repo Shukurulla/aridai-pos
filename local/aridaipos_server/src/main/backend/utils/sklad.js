@@ -128,6 +128,37 @@ export async function restoreForOrder(order, items, by) {
       const outs = await stockMovementModel.find({ refOrderId: order._id, direction: "out" });
       // Avval qaytarilganini ayirib tashlaymiz (ikki marta restore bo'lmasin)
       const backs = await stockMovementModel.find({ refOrderId: order._id, direction: "in", reason: `cancel:${order._id}` });
+
+      // FALLBACK: bu tomonda OUT movement YO'Q (order BOSHQA tomonda yaratilgan —
+      // masalan waiter/QR global'da, cancel esa POS'da). Retsept bo'yicha qaytaramiz:
+      // 'in' movementlar push orqali global'ga boradi va u yerdagi 'out'larni
+      // kompensatsiya qiladi. backs bo'lsa allaqachon qaytarilgan — qaytmaymiz.
+      if (!outs.length && !backs.length) {
+        const activeItems = (order.foods || [])
+          .map((f) => {
+            const c = Array.isArray(f.cancels) ? f.cancels : [];
+            const inc = c.filter((x) => x.status === "inc").reduce((s, x) => s + x.changeVal, 0);
+            const dec = c.filter((x) => x.status === "dec").reduce((s, x) => s + x.changeVal, 0);
+            return { foodId: f.foodId, quantity: Math.max(0, (f.quantity || 0) + inc - dec) };
+          })
+          .filter((x) => x.quantity > 0);
+        const need = await requiredIngredients(order.branch, activeItems);
+        const fdocs = [...need.entries()].map(([ingredientId, n]) => ({
+          branch: order.branch,
+          restaurantId: order.restaurantId,
+          ingredientId,
+          direction: "in",
+          delta: n.qty,
+          quantity: n.qty,
+          unit: n.unit || null,
+          reason: `cancel:${order._id}`,
+          refOrderId: order._id,
+          createdBy: by || null,
+        }));
+        if (fdocs.length) await applyMovements(fdocs);
+        return;
+      }
+
       const restored = new Map();
       for (const b of backs) {
         const k = String(b.ingredientId);

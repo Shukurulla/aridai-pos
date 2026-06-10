@@ -2,7 +2,7 @@ import express from "express";
 import authMiddleware from "../middlewares/auth.middleware.js";
 import branchAuth from "../middlewares/branchAuth.middleware.js";
 import { requireFeature } from "../features/middleware.js";
-import { keshbekConfig, capturePhone, spendCashback } from "../utils/keshbek.js";
+import { keshbekConfig, capturePhone, spendCashback, refundCashbackForOrder } from "../utils/keshbek.js";
 import {
   cashbackBalanceModel,
   cashbackMovementModel,
@@ -106,6 +106,19 @@ branchRouter.post("/spend", async (req, res) => {
       return res.status(400).json({ status: "error", code: r.error, message: msg });
     }
     await audit.log({ kind: "keshbek_spend", restaurantId, branchId: req.branch._id, message: `${normPhone(phone)}: -${r.spent}` });
+    return res.json({ status: "success", data: r });
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: e.message });
+  }
+});
+
+// Vozvrat: spend qaytarish + earn sessiya void (feature-check'siz — tozalash
+// har doim ishlashi kerak; modul o'chiq bo'lsa spend bo'lmagan bo'ladi).
+branchRouter.post("/refund", async (req, res) => {
+  try {
+    const { orderId } = req.body || {};
+    if (!orderId) return res.status(400).json({ status: "error", message: "orderId required" });
+    const r = await refundCashbackForOrder(req.branch.restaurant, orderId);
     return res.json({ status: "success", data: r });
   } catch (e) {
     return res.status(500).json({ status: "error", message: e.message });

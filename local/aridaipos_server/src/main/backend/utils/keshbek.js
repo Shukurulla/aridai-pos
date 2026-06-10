@@ -85,3 +85,18 @@ export async function balanceViaGlobal(phone) {
 export async function spendViaGlobal(payload) {
   return globalCall("POST", "/api/keshbek/branch/spend", payload);
 }
+
+export async function refundViaGlobal(orderId) {
+  return globalCall("POST", "/api/keshbek/branch/refund", { orderId });
+}
+
+// Lokal pending earn sessiyani void qilish (chek QR endi chiqmasin). Agar sessiya
+// hali push bo'lmagan bo'lsa — expired holida push bo'ladi; bo'lgan bo'lsa global
+// refund endpoint global nusxani expired qiladi.
+export async function voidLocalEarnSession(orderId) {
+  try {
+    await cashbackQrSessionModel.updateOne({ orderId, status: "pending" }, { $set: { status: "expired" } });
+  } catch (e) {
+    console.warn("[keshbek] local session void xato:", e?.message);
+  }
+}

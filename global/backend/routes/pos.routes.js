@@ -12,7 +12,7 @@ import orderModel from "../models/order.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { computeShiftTotals } from "../utils/shift-totals.js";
-import { createEarnSession } from "../utils/keshbek.js";
+import { createEarnSession, refundCashbackForOrder } from "../utils/keshbek.js";
 import { audit } from "../utils/audit.js";
 
 // ============================================================
@@ -345,7 +345,20 @@ router.post("/orders/:id/pay", async (req, res) => {
     const order = await orderModel.findOne({ _id: req.params.id, branch });
     if (!order) return res.status(404).json({ status: "error", code: "ORDER_NOT_FOUND" });
     if (order.isCancel) return res.status(400).json({ status: "error", code: "CANCELLED" });
-    if (order.paymentStatus === "paid") return res.status(400).json({ status: "error", code: "ALREADY_PAID" });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") {
+      return res.status(400).json({ status: "error", code: "ALREADY_PAID" });
+    }
+
+    // Soatlik taomlarni MUZLATISH + qayta hisob (to'lov summasi vaqtga mos bo'lsin)
+    const nowFreeze = new Date();
+    for (const f of order.foods || []) {
+      if (f.isHourly && !(f.hourlyFinalAmount > 0)) {
+        const start = f.hourlyStartedAt ? new Date(f.hourlyStartedAt).getTime() : f.addedAt ? new Date(f.addedAt).getTime() : nowFreeze.getTime();
+        f.hourlyStoppedAt = nowFreeze;
+        f.hourlyFinalAmount = Math.round((Math.max(0, nowFreeze.getTime() - start) / 3600000) * (f.hourlyPrice || 0) * (f.quantity || 1));
+      }
+    }
+    calculateOrderTotals(order);
 
     const { paymentMethod, mixed, cashGiven } = req.body;
     const allowed = ["cash", "card", "transfer", "kaspi", "mixed"];
@@ -357,6 +370,12 @@ router.post("/orders/:id/pay", async (req, res) => {
     // tushum breakdown buziladi: cash/card kam/ko'p sanaladi).
     if (paymentMethod === "mixed") {
       const m = mixed || {};
+      for (const k of ["cash", "card", "transfer", "kaspi"]) {
+        const v = m[k];
+        if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) {
+          return res.status(400).json({ status: "error", code: "NEGATIVE_SPLIT", message: "Суммы оплаты не могут быть отрицательными" });
+        }
+      }
       const splitSum =
         (Number(m.cash) || 0) + (Number(m.card) || 0) + (Number(m.transfer) || 0) + (Number(m.kaspi) || 0);
       if (splitSum !== (order.totalPrice || 0)) {
@@ -410,6 +429,7 @@ router.post("/orders/:id/refund", async (req, res) => {
     order.refundedBy = req.userData._id;
     order.refundReason = req.body?.reason || null;
     await order.save();
+    refundCashbackForOrder(req.userData.restaurantId, order._id); // keshbek revert — fire-and-forget
     await audit.log({ kind: "order_refunded", restaurantId: req.userData.restaurantId, branchId: branch, actor: { type: "user", id: String(req.userData._id), role: req.userData.role }, message: `${order.receiptNumber}: refund ${order.totalPrice}` });
     return res.status(200).json({ status: "success", data: order });
   } catch (e) {
@@ -424,6 +444,10 @@ router.post("/orders/:id/cancel", async (req, res) => {
     const order = await orderModel.findOne({ _id: req.params.id, branch });
     if (!order) return res.status(404).json({ status: "error", code: "ORDER_NOT_FOUND" });
     if (order.paymentStatus === "paid") return res.status(400).json({ status: "error", code: "ALREADY_PAID", message: "To'langan orderni bekor qilib bo'lmaydi (refund kerak)" });
+    if (order.paymentStatus === "refunded") return res.status(400).json({ status: "error", code: "REFUNDED", message: "Заказ уже возвращён" });
+    if (order.paymentStatus === "partiallyPaid" || (order.payments || []).length > 0) {
+      return res.status(400).json({ status: "error", code: "PARTIAL_PAID", message: "Есть частичная оплата — сначала оформите возврат" });
+    }
     if (order.isCancel) return res.status(400).json({ status: "error", code: "ALREADY_CANCELLED" });
 
     order.isCancel = true;

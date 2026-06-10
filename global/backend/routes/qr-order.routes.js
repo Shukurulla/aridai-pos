@@ -192,14 +192,29 @@ staffRouter.get("/pending", async (req, res) => {
 staffRouter.post("/:id/approve", async (req, res) => {
   try {
     const branch = req.userData.branch;
-    const r = await qrOrderRequestModel.findOne({ _id: req.params.id, branch });
-    if (!r) return res.status(404).json({ status: "error", message: "Запрос не найден" });
-    if (r.status !== "pending" || r.expiresAt < new Date()) {
+    // ATOMIK CLAIM — parallel/ikki marta approve 2x order yaratmasin: pending →
+    // approved birinchi bo'lib o'tkazgan g'olib; qolganlar 400 oladi.
+    const r = await qrOrderRequestModel.findOneAndUpdate(
+      { _id: req.params.id, branch, status: "pending", expiresAt: { $gt: new Date() } },
+      { $set: { status: "approved", decidedAt: new Date(), decidedBy: req.userData._id } },
+      { new: true },
+    );
+    if (!r) {
       return res.status(400).json({ status: "error", message: "Запрос уже обработан или истёк" });
     }
+    // Quyida validatsiya yiqilsa claim QAYTARILADI (releaseClaim)
+    const releaseClaim = async () => {
+      await qrOrderRequestModel.updateOne(
+        { _id: r._id, status: "approved", approvedOrderId: null },
+        { $set: { status: "pending", decidedAt: null, decidedBy: null } },
+      ).catch(() => {});
+    };
 
     const shift = await shiftModel.findOne({ branch, isActive: true });
-    if (!shift) return res.status(400).json({ status: "error", code: "NO_OPEN_SHIFT", message: "Сначала откройте смену" });
+    if (!shift) {
+      await releaseClaim();
+      return res.status(400).json({ status: "error", code: "NO_OPEN_SHIFT", message: "Сначала откройте смену" });
+    }
 
     const foods = r.items.map((it) => ({
       foodId: it.foodId,
@@ -214,6 +229,7 @@ staffRouter.post("/:id/approve", async (req, res) => {
     // SKLAD (yoqiq bo'lsa): O1 oversell-blok
     const stockChk = await checkStockAvailability(r.restaurantId, branch, foods);
     if (!stockChk.ok) {
+      await releaseClaim();
       return res.status(400).json({ status: "error", code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) });
     }
 
@@ -256,9 +272,6 @@ staffRouter.post("/:id/approve", async (req, res) => {
     const order = await orderModel.create(orderData);
     deductForOrder(order, foods, req.userData._id); // sklad chiqim — fire-and-forget
 
-    r.status = "approved";
-    r.decidedAt = new Date();
-    r.decidedBy = req.userData._id;
     r.approvedOrderId = order._id;
     await r.save();
 

@@ -55,6 +55,9 @@ const stockMovementSchema = new mongoose.Schema(
     reason: { type: String, default: "manual" }, // order:{id} | manual | inventory | cancel:{id}
     refOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "order", default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+    // Sync push'da ikki bosqich (create → $inc) atomik emas — applied flag bilan
+    // yarim-qo'llangan movement keyingi push'da balansга yetkaziladi (#review-9).
+    applied: { type: Boolean, default: true },
   },
   { timestamps: true },
 );

@@ -13,6 +13,26 @@
 
 const round = (x) => Math.round(x);
 
+// Soatlik taom summasi — DAQIQALI prorata (LOCAL order-calc bilan BIR XIL).
+// To'langan/to'xtatilgan → muzlatilgan hourlyFinalAmount. Aks holda jonli (now gacha).
+export function hourlyItemAmount(item, now = Date.now()) {
+  if (item.hourlyFinalAmount && item.hourlyFinalAmount > 0) return item.hourlyFinalAmount;
+  const start = item.hourlyStartedAt
+    ? new Date(item.hourlyStartedAt).getTime()
+    : item.addedAt
+      ? new Date(item.addedAt).getTime()
+      : now;
+  const stop = item.hourlyStoppedAt ? new Date(item.hourlyStoppedAt).getTime() : now;
+  const diffMs = Math.max(0, stop - start);
+  return Math.round((diffMs / 3600000) * (item.hourlyPrice || 0) * (item.quantity || 1));
+}
+
+// Item qatori summasi: soatlik → vaqt bo'yicha, aks holda narx × effektiv miqdor.
+export function itemLineAmount(item, now = Date.now()) {
+  if (item.isHourly) return hourlyItemAmount(item, now);
+  return (item.foodPrice || 0) * effectiveQuantity(item);
+}
+
 // Taom miqdori inc/dec o'zgarishlari bilan
 export function effectiveQuantity(item) {
   const cancels = Array.isArray(item.cancels) ? item.cancels : [];
@@ -47,7 +67,8 @@ export function calculateTariff(tariff) {
 export function calculateOrderTotals(order) {
   // === 1. subTotal ===
   const foods = Array.isArray(order.foods) ? order.foods : [];
-  const subTotal = foods.reduce((sum, item) => sum + (item.foodPrice || 0) * effectiveQuantity(item), 0);
+  // Soatlik taomlar vaqt bo'yicha (jonli), oddiy taomlar narx × miqdor
+  const subTotal = foods.reduce((sum, item) => sum + itemLineAmount(item), 0);
   order.subTotal = subTotal;
 
   // === 2. tariffAmount (alohida) ===

@@ -86,6 +86,14 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
     api.keshbekStatus().then(setKb).catch(() => {});
   }, []);
 
+  // Partial rejimga o'tilsa keshbek qismi tozalanadi. MUHIM: bu hook
+  // `if (!order) return null` dan OLDIN turishi shart (hooklar tartibi buzilmasin).
+  useEffect(() => {
+    if (mode === 'partial') {
+      setSplit((s) => ((s.cashback || 0) > 0 ? { ...s, cashback: 0 } : s));
+    }
+  }, [mode]);
+
   useEffect(() => {
     let alive = true;
     api
@@ -122,8 +130,12 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const oDisc = Number((order as { discount?: number }).discount || 0);
   // Услуга = STOL XIZMATI → saboy/takeaway uchun UMUMAN yo'q (backend bilan bir xil).
   const isDineIn = order.orderType !== 'saboy' && order.orderType !== 'takeaway';
-  const svcPct = !isDineIn ? 0 : oSvcPct > 0 ? oSvcPct : brSvcEn ? brSvcPct : 0;
-  const discPct = oDiscPct > 0 ? oDiscPct : brDiscPct;
+  // QISMAN TO'LANGAN order: server услуга/chegirmani WAIVE qilgan (pay-items
+  // shartnomasi) — filial %' fallback'i qayta qo'shilsa mijozdan ortiqcha olinadi
+  // yoki mixed to'lov server bilan hech qachon mos kelmaydi (deadlock).
+  const partialFlow = order.paymentStatus === 'partiallyPaid';
+  const svcPct = !isDineIn || partialFlow ? 0 : oSvcPct > 0 ? oSvcPct : brSvcEn ? brSvcPct : 0;
+  const discPct = partialFlow ? 0 : oDiscPct > 0 ? oDiscPct : brDiscPct;
   const serviceFee =
     mode !== 'full' || !isDineIn
       ? 0
@@ -152,13 +164,6 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const totalItemPages = Math.max(1, Math.ceil(allItems.length / ITEMS_PER_PAGE));
   const curPage = Math.min(itemPage, totalItemPages);
   const visibleItems = allItems.slice((curPage - 1) * ITEMS_PER_PAGE, curPage * ITEMS_PER_PAGE);
-
-  useEffect(() => {
-    if (mode === 'partial' && (split.cashback || 0) > 0) {
-      setSplit((s) => ({ ...s, cashback: 0 }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
 
   const toggleItem = (id: string) => {
     if (mode !== 'partial') return;
