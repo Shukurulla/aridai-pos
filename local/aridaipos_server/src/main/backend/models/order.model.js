@@ -83,6 +83,11 @@ const orderSchema = new mongoose.Schema(
           hourlyStoppedAt: { type: Date, default: null },
           hourlyFinalAmount: { type: Number, default: 0 },
 
+          // Qisman to'lov (pay-items) — shu taom alohida to'langan
+          isPaid: { type: Boolean, default: false },
+          paidAt: { type: Date, default: null },
+          itemPaymentType: { type: String, default: null }, // cash|card|click|mixed (kepket)
+
           // miqdor o'zgarishlari (inc/dec) — obsidian/05-data-model/biznes-mantiq/cancel-refund.md
           cancels: [
             {
@@ -154,6 +159,25 @@ const orderSchema = new mongoose.Schema(
       givenAmount: { type: Number },
       changeAmount: { type: Number },
     },
+
+    // ===== Qisman to'lov sessiyalari (pay-items) =====
+    // Har sessiya: tanlangan taomlar + summa + usul. Oxirgi sessiya orderni yopadi
+    // (amount = totalPrice − oldingilar) → Σ payments == totalPrice invariant.
+    payments: [
+      {
+        amount: { type: Number, required: true, min: 0 },
+        method: { type: String, enum: PAYMENT_METHODS, required: true },
+        mixed: {
+          cash: { type: Number, default: 0 },
+          card: { type: Number, default: 0 },
+          transfer: { type: Number, default: 0 },
+        },
+        itemIds: [{ type: String }], // foods[]._id (shu sessiyada to'langanlar)
+        comment: { type: String, default: null },
+        paidAt: { type: Date, default: Date.now },
+        paidBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+      },
+    ],
 
     // Keshbek (toggle) — obsidian/04-toollar/keshbek-tizimi.md
     cashback: {

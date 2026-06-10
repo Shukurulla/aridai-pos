@@ -97,7 +97,7 @@ export interface Order {
   tableCategoryTitle?: string;
   items: OrderItem[];
   status: 'active' | 'paid' | 'cancelled';
-  paymentStatus: 'pending' | 'paid';
+  paymentStatus: 'pending' | 'paid' | 'partiallyPaid' | 'refunded';
   paymentType?: PaymentType;
   paymentSplit?: PaymentSplit;
   comment?: string;

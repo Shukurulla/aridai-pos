@@ -154,6 +154,10 @@ function mapBackendOrderToDashboard(rawOrder: any): Order {
   const subtotal = activeItems.reduce((sum: number, i: { price: number; quantity: number }) => sum + i.price * i.quantity, 0);
   const isPaid = o.isPaid === true || o.status === 'paid';
   const isCancelled = o.status === 'cancelled';
+  // Возврат — kartochka cancelled kabi yopiq ko'rinadi, paymentStatus saqlanadi
+  // (OrderDetail "ВОЗВРАТ ОФОРМЛЕН" ko'rsatadi). partiallyPaid ham o'tkaziladi.
+  const isRefunded = o.paymentStatus === 'refunded';
+  const isPartial = o.paymentStatus === 'partiallyPaid';
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return {
@@ -184,8 +188,8 @@ function mapBackendOrderToDashboard(rawOrder: any): Order {
           }
         })(),
     items,
-    status: isCancelled ? 'cancelled' : (isPaid ? 'paid' : 'active'),
-    paymentStatus: isPaid ? 'paid' : 'pending',
+    status: isCancelled || isRefunded ? 'cancelled' : isPaid ? 'paid' : 'active',
+    paymentStatus: isRefunded ? 'refunded' : isPartial ? 'partiallyPaid' : isPaid ? 'paid' : 'pending',
     paymentType: o.paymentType,
     total: subtotal,
     serviceFee: 0,
@@ -519,6 +523,9 @@ class ApiService {
       const isPaid = order.isPaid === true || order.status === 'paid';
       // Сохраняем статус отмены
       const isCancelled = order.status === 'cancelled';
+      // Возврат / qisman to'lov — paymentStatus saqlanadi (refund UI + partial)
+      const isRefunded = order.paymentStatus === 'refunded';
+      const isPartial = order.paymentStatus === 'partiallyPaid';
 
       // Всегда используем grandTotal, рассчитанный по активным элементам
       const finalGrandTotal = grandTotal;
@@ -544,8 +551,8 @@ class ApiService {
         tableNumber,
         tableName: isSaboy ? 'Собой' : tableName,
         items,
-        status: isCancelled ? 'cancelled' : (isPaid ? 'paid' : 'active'),
-        paymentStatus: isPaid ? 'paid' : 'pending',
+        status: isCancelled || isRefunded ? 'cancelled' : isPaid ? 'paid' : 'active',
+        paymentStatus: isRefunded ? 'refunded' : isPartial ? 'partiallyPaid' : isPaid ? 'paid' : 'pending',
         paymentType: order.paymentType,
         total: subtotal,
         serviceFee: serviceCharge,

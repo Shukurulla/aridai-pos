@@ -78,11 +78,12 @@ router.post("/:id/close", async (req, res) => {
     const shift = await shiftModel.findOne({ _id: req.params.id, branch: req.userData.branch });
     if (!shift) return res.status(404).json({ success: false, error: { message: "Смена не найдена" } });
 
-    // Ochiq (to'lanmagan) orderlar bo'lsa — smena yopilmaydi (tushum/kassa noto'g'ri bo'ladi)
+    // Ochiq (to'lanmagan) orderlar bo'lsa — smena yopilmaydi (tushum/kassa noto'g'ri bo'ladi).
+    // refunded = yopiq (qaytarilgan) — bloklamaydi; partiallyPaid = ochiq (bloklaydi).
     const openOrders = await orderModel.countDocuments({
       shift: shift._id,
       isCancel: { $ne: true },
-      paymentStatus: { $ne: "paid" },
+      paymentStatus: { $nin: ["paid", "refunded"] },
     });
     if (openOrders > 0) {
       return res.status(400).json({

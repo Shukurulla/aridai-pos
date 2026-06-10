@@ -59,7 +59,10 @@ router.put("/:id/close", authMiddleware, async (req, res) => {
     let orders = await orderModel.find({ shift: id });
 
     // Ochiq (to'lanmagan, bekor qilinmagan) orderlar.
-    const openList = orders.filter((o) => !o.isCancel && o.paymentStatus !== "paid");
+    // refunded = yopiq (bloklamaydi); partiallyPaid = ochiq (bloklaydi).
+    const openList = orders.filter(
+      (o) => !o.isCancel && o.paymentStatus !== "paid" && o.paymentStatus !== "refunded",
+    );
     // force=false → smena yopilmaydi (tushum/kassa noto'g'ri hisoblanmasligi uchun).
     // force=true (admin) → ochiq orderlarni avtomatik bekor qilib, smenani majburan yopadi
     //   (osilib qolgan smenalarni tozalash uchun).

@@ -53,7 +53,7 @@ export default function Shifts() {
       ordersCount: live.length,
       revenue: paid.reduce((s, o) => s + (o.totalPrice || 0), 0),
       cashRevenue,
-      open: live.filter((o) => o.paymentStatus !== "paid").length,
+      open: live.filter((o) => o.paymentStatus !== "paid" && o.paymentStatus !== "refunded").length,
     };
   };
 
@@ -81,7 +81,8 @@ export default function Shifts() {
   const closeShift = async (s) => {
     // Shu smenaning orderlaridan jonli hisob
     const mine = orders.filter((o) => shiftIdOf(o) === String(s._id) && !o.isCancel);
-    const openCount = mine.filter((o) => o.paymentStatus !== "paid").length;
+    // refunded = yopiq (qaytarilgan) — ochiq sanalmaydi, force-close uni bekor qilmasin
+    const openCount = mine.filter((o) => o.paymentStatus !== "paid" && o.paymentStatus !== "refunded").length;
 
     // Ochiq (to'lanmagan) orderlar bo'lsa — majburan yopishni so'raymiz (admin).
     // Tasdiqlasa: ochiq orderlar bekor qilinadi va smena yopiladi (force).

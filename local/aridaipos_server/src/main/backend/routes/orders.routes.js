@@ -436,6 +436,9 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
 
     const item = order.foods.id(req.params.itemId);
     if (!item) return res.status(404).json({ success: false, error: { message: "Блюдо не найдено" } });
+    if (item.isPaid === true) {
+      return res.status(400).json({ success: false, error: { message: "Оплаченное блюдо нельзя изменить" } });
+    }
 
     const prevQty = effQty(item); // o'zgarishdan oldingi (effektiv) miqdor
     const qty = Math.max(1, Number(req.body.quantity) || 1);
@@ -600,23 +603,58 @@ router.post("/:id/pay", async (req, res) => {
     // Итог qayta hisoblanadi (items o'zgargan/soatlik muzlatildi)
     calculateOrderTotals(order);
 
-    // TO'LIQ SUMMA VALIDATSIYA — mixed (aralash) uchun split = grandTotal bo'lishi shart
+    // Qisman to'langan order — qolgan summagina to'lanadi (Σ payments == totalPrice)
+    const prevPaid = (order.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    const required = Math.max(0, (order.totalPrice || 0) - prevPaid);
+
+    // TO'LIQ SUMMA VALIDATSIYA — mixed (aralash) uchun split = qolgan summa bo'lishi shart
     if (paymentType === "mixed") {
       const s = paymentSplit || {};
       const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0);
-      if (Math.abs(sum - order.totalPrice) >= 100) {
+      if (Math.abs(sum - required) >= 100) {
         return res.status(400).json({
           success: false,
-          error: { message: `Сумма оплаты (${sum}) должна равняться итогу заказа (${order.totalPrice})` },
+          error: { message: `Сумма оплаты (${sum}) должна равняться итогу заказа (${required})` },
         });
       }
       order.mixed = { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0, kaspi: 0, cashback: 0 };
     }
 
+    const payerId = req.userData.id || req.userData.userId || null;
+    const paidNow = new Date();
+
+    // Barcha aktiv taomlar to'landi deb belgilanadi (pay-items bilan izchil)
+    for (const f of order.foods || []) {
+      if (!f.isPaid && effQty(f) > 0) {
+        f.isPaid = true;
+        f.paidAt = paidNow;
+        f.itemPaymentType = paymentType;
+      }
+    }
+
+    if (prevPaid > 0) {
+      // Oldin qisman sessiyalar bo'lgan — yakuniy sessiya yozib, usulni agregatlaymiz
+      const s = paymentSplit || {};
+      order.payments.push({
+        amount: required,
+        method: toLocalPayMethod(paymentType),
+        mixed:
+          paymentType === "mixed"
+            ? { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0 }
+            : { cash: 0, card: 0, transfer: 0 },
+        itemIds: [],
+        comment: null,
+        paidAt: paidNow,
+        paidBy: payerId,
+      });
+      finalizePayments(order);
+    } else {
+      order.paymentMethod = toLocalPayMethod(paymentType);
+    }
+
     order.paymentStatus = "paid";
-    order.paymentMethod = toLocalPayMethod(paymentType);
-    order.paidAt = new Date();
-    order.paidBy = req.userData.id || req.userData.userId || null;
+    order.paidAt = paidNow;
+    order.paidBy = payerId;
     order.syncStatus = "pending";
     await order.save();
 
@@ -627,6 +665,167 @@ router.post("/:id/pay", async (req, res) => {
     // ro'yxatiga tushmaydi → tables endpoint uni band ko'rsatmaydi.
     const tableDoc = order.table ? await tableModel.findById(order.table) : null;
     return res.json({ success: true, data: { order: mapOrder(order, tableDoc) } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: { message: e.message } });
+  }
+});
+
+// Sessiyalardan yakuniy paymentMethod/mixed: hammasi bir usul → o'sha usul;
+// har xil → "mixed" (split = sessiyalar yig'indisi) → smena breakdown to'g'ri
+// (computeShiftTotals mixed bo'yicha cash/card/transfer'ga taqsimlaydi).
+function finalizePayments(order) {
+  const pays = order.payments || [];
+  if (!pays.length) return;
+  const methods = new Set(pays.map((p) => p.method));
+  if (methods.size === 1 && !methods.has("mixed")) {
+    order.paymentMethod = pays[0].method;
+    return;
+  }
+  const agg = { cash: 0, card: 0, transfer: 0, kaspi: 0, cashback: 0 };
+  for (const p of pays) {
+    if (p.method === "mixed") {
+      agg.cash += p.mixed?.cash || 0;
+      agg.card += p.mixed?.card || 0;
+      agg.transfer += p.mixed?.transfer || 0;
+    } else if (agg[p.method] !== undefined) {
+      agg[p.method] += p.amount || 0;
+    }
+  }
+  order.paymentMethod = "mixed";
+  order.mixed = agg;
+}
+
+// Soatlik taomni muzlatish (to'lovdan keyin summa oshmasin)
+function freezeHourly(f, now) {
+  if (!f.isHourly || f.hourlyFinalAmount > 0) return;
+  const start = f.hourlyStartedAt
+    ? new Date(f.hourlyStartedAt).getTime()
+    : f.addedAt
+      ? new Date(f.addedAt).getTime()
+      : now.getTime();
+  f.hourlyStoppedAt = now;
+  f.hourlyFinalAmount = Math.round((Math.max(0, now.getTime() - start) / 3600000) * (f.hourlyPrice || 0) * (f.quantity || 1));
+}
+
+// ===== Qisman to'lov (POST /orders/:id/pay-items) — kepket processPartialPayment =====
+// Tanlangan taomlar to'lanadi (foods[].isPaid=true) + payments[] sessiya yoziladi.
+// OXIRGI sessiya (to'lanmagan taom qolmasa) orderni yopadi: amount = totalPrice −
+// oldingi sessiyalar (услуга/chegirma/tarif yakuniyda hisoblashadi) → Σ payments == totalPrice.
+router.post("/:id/pay-items", async (req, res) => {
+  try {
+    const branch = req.userData.branch;
+    const { itemIds, paymentType, paymentSplit, comment } = req.body;
+
+    if (!paymentType || !KEPKET_PAY_TYPES.includes(paymentType)) {
+      return res.status(400).json({ success: false, error: { message: "Укажите способ оплаты" } });
+    }
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ success: false, error: { message: "Выберите блюда для оплаты" } });
+    }
+
+    const order = await orderModel.findOne({ _id: req.params.id, branch });
+    if (!order) return res.status(404).json({ success: false, error: { message: "Заказ не найден" } });
+    if (order.isCancel) return res.status(400).json({ success: false, error: { message: "Заказ отменён" } });
+    if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") {
+      return res.status(400).json({ success: false, error: { message: "Заказ уже закрыт" } });
+    }
+
+    // Tanlanganlar — mavjud, aktiv (effQty>0) va hali to'lanmagan bo'lishi shart
+    const wanted = new Set(itemIds.map(String));
+    const selected = (order.foods || []).filter((f) => wanted.has(String(f._id)));
+    if (selected.length !== wanted.size) {
+      return res.status(404).json({ success: false, error: { message: "Блюдо не найдено" } });
+    }
+    for (const f of selected) {
+      if (effQty(f) <= 0) {
+        return res.status(400).json({ success: false, error: { message: `«${f.foodName}» отменено — оплата невозможна` } });
+      }
+      if (f.isPaid === true) {
+        return res.status(400).json({ success: false, error: { message: `«${f.foodName}» уже оплачено` } });
+      }
+    }
+
+    const nowFreeze = new Date();
+    for (const f of selected) freezeHourly(f, nowFreeze);
+
+    // UI shartnomasi (Payment.tsx partial: serviceFee=0, discountAmt=0): qisman to'lov
+    // oqimida услуга/chegirma OLINMAYDI. Birinchi sessiyadayoq waive — UI stamped % ham
+    // 0 ko'radi, /pay qoldiq hisobi mos keladi, Σ payments == totalPrice invariant.
+    if (order.service) {
+      order.service.waived = true;
+      order.service.percent = 0;
+    }
+    if (order.discount) {
+      order.discount.percent = 0;
+      order.discount.amount = 0;
+    }
+
+    // OXIRGI sessiyami? (tanlanganidan keyin to'lanmagan aktiv taom qolmaydi)
+    const isFinal = (order.foods || []).every(
+      (f) => wanted.has(String(f._id)) || f.isPaid === true || effQty(f) <= 0,
+    );
+    if (isFinal) {
+      for (const f of order.foods || []) freezeHourly(f, nowFreeze);
+    }
+
+    calculateOrderTotals(order);
+
+    // Sessiya summasi: oraliq — tanlangan taom qatorlari; yakuniy — qolgan butun summa
+    const lineAmount = (f) => (f.isHourly ? f.hourlyFinalAmount || 0 : (f.foodPrice || 0) * effQty(f));
+    const paidSoFar = (order.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    const amount = isFinal
+      ? Math.max(0, (order.totalPrice || 0) - paidSoFar)
+      : selected.reduce((s, f) => s + lineAmount(f), 0);
+
+    // Aralash — split sessiya summasiga teng bo'lishi shart
+    let mixedEntry = null;
+    if (paymentType === "mixed") {
+      const s = paymentSplit || {};
+      const sum = (Number(s.cash) || 0) + (Number(s.card) || 0) + (Number(s.click) || 0);
+      if (Math.abs(sum - amount) >= 100) {
+        return res.status(400).json({
+          success: false,
+          error: { message: `Сумма оплаты (${sum}) должна равняться сумме блюд (${amount})` },
+        });
+      }
+      mixedEntry = { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0 };
+    }
+
+    const byUser = req.userData.id || req.userData.userId || req.userData._id || null;
+    for (const f of selected) {
+      f.isPaid = true;
+      f.paidAt = nowFreeze;
+      f.itemPaymentType = paymentType;
+    }
+    order.payments.push({
+      amount,
+      method: toLocalPayMethod(paymentType),
+      mixed: mixedEntry || { cash: 0, card: 0, transfer: 0 },
+      itemIds: [...wanted],
+      comment: comment || null,
+      paidAt: nowFreeze,
+      paidBy: byUser,
+    });
+
+    if (isFinal) {
+      finalizePayments(order);
+      order.paymentStatus = "paid";
+      order.paidAt = nowFreeze;
+      order.paidBy = byUser;
+    } else {
+      order.paymentStatus = "partiallyPaid";
+    }
+    order.syncStatus = "pending";
+    await order.save();
+
+    const tableDoc = order.table ? await tableModel.findById(order.table) : null;
+    return res.json({
+      success: true,
+      data: {
+        order: mapOrder(order, tableDoc),
+        paymentSession: order.payments[order.payments.length - 1],
+      },
+    });
   } catch (e) {
     return res.status(500).json({ success: false, error: { message: e.message } });
   }
