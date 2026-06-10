@@ -2,7 +2,7 @@
 tags: [tool]
 created: 2026-05-28
 toolKey: keshbek
-status: 📝
+status: ✅ core implemented (2026-06-10)
 default: OFF
 ---
 
@@ -11,7 +11,7 @@ default: OFF
 ## Meta
 
 - **Key:** `keshbek`
-- **Status:** 📝 dizayn
+- **Status:** ✅ core implemented (2026-06-10) — earn QR (chek, deferred) + spend online (POS СМЕШАННАЯ) + admin balanslar. Qoldi: WhatsApp bot integratsiyasi (webhook stub), SMS, expire scheduler
 - **Default:** OFF
 - **Version:** 1
 - **requires:** core (payment, order)
