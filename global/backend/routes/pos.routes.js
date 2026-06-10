@@ -352,6 +352,21 @@ router.post("/orders/:id/pay", async (req, res) => {
       return res.status(400).json({ status: "error", code: "INVALID_PAYMENT_METHOD" });
     }
 
+    // Aralash to'lov — split YIG'INDISI order jamiga TENG bo'lishi shart (aks holda
+    // tushum breakdown buziladi: cash/card kam/ko'p sanaladi).
+    if (paymentMethod === "mixed") {
+      const m = mixed || {};
+      const splitSum =
+        (Number(m.cash) || 0) + (Number(m.card) || 0) + (Number(m.transfer) || 0) + (Number(m.kaspi) || 0);
+      if (splitSum !== (order.totalPrice || 0)) {
+        return res.status(400).json({
+          status: "error",
+          code: "MIXED_SUM_MISMATCH",
+          message: `Сумма разбивки (${splitSum}) не равна итого (${order.totalPrice})`,
+        });
+      }
+    }
+
     order.paymentStatus = "paid";
     order.paymentMethod = paymentMethod;
     order.paidAt = new Date();
