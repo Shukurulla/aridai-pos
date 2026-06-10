@@ -77,6 +77,9 @@ class ApiService {
   /// The logged-in user, available synchronously after [loadSession].
   User? get currentUser => _currentUser;
 
+  /// The stored auth token (for the socket handshake). Null when logged out.
+  String? get token => _token;
+
   /// Load the saved server base (or default) and apply it to Dio. Call before
   /// any request (done inside [loadSession]).
   Future<void> loadServerUrl() async {

@@ -50,14 +50,17 @@ class SocketService {
     }
 
     try {
-      final socket = io.io(
-        _host,
-        io.OptionBuilder()
-            .setTransports(['websocket', 'polling'])
-            .enableAutoConnect()
-            .enableReconnection()
-            .build(),
-      );
+      // Token handshake'da yuboriladi — server tenant'ni tekshiradi (faqat o'z
+      // filialiga join). Tokensiz ulansa real-time ishlamaydi (polling fallback).
+      final token = ApiService.instance.token;
+      final builder = io.OptionBuilder()
+          .setTransports(['websocket', 'polling'])
+          .enableAutoConnect()
+          .enableReconnection();
+      if (token != null && token.isNotEmpty) {
+        builder.setAuth({'token': token});
+      }
+      final socket = io.io(_host, builder.build());
 
       socket.onConnect((_) => _join());
       socket.on('orders:changed', (_) {
