@@ -67,10 +67,10 @@ order.service.waiveReason = String;
 
 ## Chegirma + service tartibi
 
-Hisoblash tartibi qat'iy ([[../05-data-model/biznes-mantiq/total-hisoblash]]):
+Hisoblash tartibi qat'iy ([[../05-data-model/biznes-mantiq/total-hisoblash]] — 31.05 yangilangan):
 1. subTotal (taomlar)
-2. discount (subTotal'dan)
-3. service ((subTotal − discount)'dan)
+2. service (subTotal'dan — chegirmadan OLDIN)
+3. discount ((subTotal + service)'dan)
 4. total
 
 Chegirma toggle o'zgarsa — butun zanjir qayta hisoblanadi.

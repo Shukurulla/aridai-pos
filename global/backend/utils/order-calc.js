@@ -1,14 +1,15 @@
 // Order total hisoblash — YAGONA haqiqat manbai (server authority).
 // obsidian/05-data-model/biznes-mantiq/total-hisoblash.md
 //
-// MUHIM tartib (foydalanuvchi talabi):
+// MUHIM tartib (foydalanuvchi qarori — 2026-05-31, eski spec bekor qilindi):
 //   1) subTotal  = taomlar yig'indisi (snapshot narx × effective qty)
-//   2) discount  = subTotal asosida (foiz yoki absolut, subTotal bilan cheklangan)
-//   3) service   = (subTotal − discount) asosida  ← chegirmadan KEYIN
+//   2) service   = subTotal asosida (usluga foizi — chegirmadan OLDIN)
+//   3) discount  = (subTotal + service) asosida  ← usluga QO'SHILGANdan KEYIN
 //   4) tariff    = stol tarifi (alohida, service/discount'ga aralashmaydi)
 //   5) total     = subTotal + tariff + service − discount
 //
-// Ya'ni service va discount mustaqil EMAS — service chegirma ayrilgan bazadan olinadi.
+// Misol (foydalanuvchi): 2900 + service50%=1450 → discount=(2900+1450)×10%=435 → total=3915.
+// MUHIM: local order-calc.js, order.routes recalcOrder va POS renderer bilan BIR XIL bo'lishi shart.
 
 const round = (x) => Math.round(x);
 
@@ -56,25 +57,26 @@ export function calculateOrderTotals(order) {
     order.selectedTariff.totalAmount = tariffAmount;
   }
 
-  // === 3. discountAmount (subTotal asosida, service'siz) ===
-  let discountAmount = 0;
-  if (order.discount && (order.discount.percent || order.discount.amount)) {
-    if (order.discount.type === "amount") {
-      discountAmount = Math.min(order.discount.amount || 0, subTotal);
-    } else {
-      discountAmount = round((subTotal * (order.discount.percent || 0)) / 100);
-    }
-  }
-  discountAmount = Math.max(0, Math.min(discountAmount, subTotal));
-  order.discountAmount = discountAmount;
-
-  // === 4. serviceAmount ((subTotal − discount) asosida) ===
+  // === 3. serviceAmount (subTotal asosida — chegirmadan OLDIN) ===
   let serviceAmount = 0;
   const servicePercent = order.service?.waived ? 0 : order.service?.percent || 0;
   if (servicePercent > 0) {
-    serviceAmount = round(((subTotal - discountAmount) * servicePercent) / 100);
+    serviceAmount = round((subTotal * servicePercent) / 100);
   }
   if (order.service) order.service.amount = serviceAmount;
+
+  // === 4. discountAmount ((subTotal + service) asosida — usluga QO'SHILGAN summadan) ===
+  const discountBase = subTotal + serviceAmount;
+  let discountAmount = 0;
+  if (order.discount && (order.discount.percent || order.discount.amount)) {
+    if (order.discount.type === "amount") {
+      discountAmount = Math.min(order.discount.amount || 0, discountBase);
+    } else {
+      discountAmount = round((discountBase * (order.discount.percent || 0)) / 100);
+    }
+  }
+  discountAmount = Math.max(0, Math.min(discountAmount, discountBase));
+  order.discountAmount = discountAmount;
 
   // === 5. totalPrice ===
   const totalPrice = subTotal + tariffAmount + serviceAmount - discountAmount;

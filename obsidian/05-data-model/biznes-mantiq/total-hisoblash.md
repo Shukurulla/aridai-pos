@@ -7,13 +7,19 @@ created: 2026-05-28
 
 > Bu hujjat — order'ning narxlari qanday hisoblanishini aniq belgilaydi. Eng ko'p xatoga olib keladigan joy. Aniq qoidalar shart.
 
+> [!important] ⚠️ YANGILANGAN QAROR (foydalanuvchi, 2026-05-31) — eski tartib BEKOR
+> Avval (28.05): discount = subTotal'dan, service = (subTotal − discount)'dan.
+> **Hozir (31.05): service = subTotal'dan (chegirmadan OLDIN), discount = (subTotal + service)'dan.**
+> Foydalanuvchi: "skidka usluga qo'shilgan summadan olinsin". Misol: 2900 + service50%=1450 → discount=(2900+1450)×10%=**435** → total=**3915**.
+> Quyidagi misollardagi raqamlar shu yangi tartibga ko'ra yangilangan.
+
 ## Asosiy formula
 
 ```
 subTotal = SUM(foods[i].foodPrice * effectiveQuantity(foods[i]))
 tariffAmount = tariff hisobi (hourly/fixed/daily)
-discountAmount = subTotal asosida (lekin tariff'siz)
-serviceAmount = (subTotal - discountAmount) asosida
+serviceAmount = subTotal asosida (usluga foizi — chegirmadan OLDIN)
+discountAmount = (subTotal + serviceAmount) asosida (usluga QO'SHILGANdan keyin)
 
 totalPrice = subTotal + tariffAmount + serviceAmount - discountAmount
 ```
@@ -32,12 +38,12 @@ flowchart TB
     D --> E
 ```
 
-Yoki sodda:
+Yoki sodda (YANGI tartib, 31.05):
 1. **subTotal** — taomlar yig'indisi (snapshot narxlar)
 2. **tariff** — stol tarifi (alohida, foods'ga aralashmaydi)
-3. **discount** — subTotal'dan foiz yoki absolut
-4. **service** — (subTotal − discount)'dan foiz
-5. **total** — yuqoridagilar summasi minus discount
+3. **service** — subTotal'dan foiz (chegirmadan OLDIN)
+4. **discount** — (subTotal + service)'dan foiz yoki absolut
+5. **total** — subTotal + tariff + service − discount
 
 ## Implementatsiya
 
@@ -56,24 +62,24 @@ function calculateOrderTotals(order) {
     order.selectedTariff.totalAmount = tariffAmount;
   }
 
-  // === 3. discountAmount (subTotal asosida) ===
+  // === 3. serviceAmount (subTotal asosida — chegirmadan OLDIN) ===
+  let serviceAmount = 0;
+  if (order.service?.percent > 0 && !order.service.waived) {
+    serviceAmount = Math.round(order.subTotal * order.service.percent / 100);
+    order.service.amount = serviceAmount;
+  }
+
+  // === 4. discountAmount ((subTotal + service) asosida — usluga QO'SHILGANdan keyin) ===
+  const discountBase = order.subTotal + serviceAmount;
   let discountAmount = 0;
   if (order.discount) {
     if (order.discount.type === 'amount') {
-      discountAmount = Math.min(order.discount.amount, order.subTotal);
+      discountAmount = Math.min(order.discount.amount, discountBase);
     } else {
-      discountAmount = Math.round(order.subTotal * order.discount.percent / 100);
+      discountAmount = Math.round(discountBase * order.discount.percent / 100);
     }
   }
   order.discountAmount = discountAmount;
-
-  // === 4. serviceAmount ((subTotal - discount) asosida) ===
-  let serviceAmount = 0;
-  if (order.service?.percent > 0) {
-    const baseForService = order.subTotal - discountAmount;
-    serviceAmount = Math.round(baseForService * order.service.percent / 100);
-    order.service.amount = serviceAmount;
-  }
 
   // === 5. totalPrice ===
   order.totalPrice = order.subTotal + tariffAmount + serviceAmount - discountAmount;
@@ -147,15 +153,13 @@ totalPrice = 98000 + 0 + 5880 - 0 = 103,880
 
 ```
 subTotal = 100000
-discountAmount = 100000 × 10% = 10000
-serviceAmount = (100000 - 10000) × 6% = 5400
-totalPrice = 100000 + 0 + 5400 - 10000 = 95,400
+serviceAmount = 100000 × 6% = 6000
+discountAmount = (100000 + 6000) × 10% = 10600
+totalPrice = 100000 + 0 + 6000 - 10600 = 95,400
 ```
 
-> [!note] Service discount'dan keyin hisoblanadi
-> Agar discount avval qo'llanmasa: service = 100000 × 6% = 6000. Total = 100000 - 10000 + 6000 = 96,000.
->
-> Farq 600 so'm. Bizning yondashuv (service discount'dan keyin) — mijoz uchun **arzonroq**. Bu bo'sh emas — dizayn qarori.
+> [!note] Discount service QO'SHILGAN summadan (31.05 qaror)
+> Avval service (subTotal'dan), keyin discount (subTotal + service)'dan. Foiz-chegirmada total bir xil chiqadi (95400), lekin service/discount summalari hisobotda boshqacha (6000/10600). Absolut chegirmada total ham farq qiladi — foydalanuvchi shu tartibni xohlagan.
 
 ### Misol 3: Billiard (hourly tariff)
 - Stol "1 soat — 50000" tarifi
@@ -182,9 +186,9 @@ totalPrice = 25000 + 150000 + 1500 - 0 = 176,500
 
 ```
 subTotal = 50000
-discountAmount = min(5000, 50000) = 5000
-serviceAmount = (50000 - 5000) × 6% = 2700
-totalPrice = 50000 + 0 + 2700 - 5000 = 47,700
+serviceAmount = 50000 × 6% = 3000
+discountAmount = min(5000, 50000 + 3000) = 5000
+totalPrice = 50000 + 0 + 3000 - 5000 = 48,000
 ```
 
 ### Misol 5: Cancel bo'lgan taom
