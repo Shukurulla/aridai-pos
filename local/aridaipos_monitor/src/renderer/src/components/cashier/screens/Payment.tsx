@@ -24,7 +24,14 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const [mode, setMode] = useState<'full' | 'partial'>('full');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [payType, setPayType] = useState<PaymentType>('cash');
-  const [split, setSplit] = useState<PaymentSplit>({ cash: 0, card: 0, click: 0 });
+  const [split, setSplit] = useState<PaymentSplit>({ cash: 0, card: 0, click: 0, cashback: 0 });
+  // KESHBEK (modul yoqiq bo'lsa): СМЕШАННАЯ ichida balansdan to'lash. Spend FAQAT
+  // ONLINE — balans tekshiruvi global'dan; offline'da server aniq xato qaytaradi.
+  const [kb, setKb] = useState<{ enabled: boolean; percent: number }>({ enabled: false, percent: 0 });
+  const [kbPhone, setKbPhone] = useState('');
+  const [kbBalance, setKbBalance] = useState<number | null>(null);
+  const [kbBusy, setKbBusy] = useState(false);
+  const [kbErr, setKbErr] = useState('');
   const [itemPage, setItemPage] = useState(1);
   const [busy, setBusy] = useState(false);
   // #15: наличные — «Получено» (введённая клиентом сумма) + «Сдача»
@@ -52,7 +59,10 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
       setMode('full');
       setSelected(new Set(unpaidItems.map((i) => i._id)));
       setPayType('cash');
-      setSplit({ cash: 0, card: 0, click: 0 });
+      setSplit({ cash: 0, card: 0, click: 0, cashback: 0 });
+      setKbPhone('');
+      setKbBalance(null);
+      setKbErr('');
       setItemPage(1);
       setReceived(null);
       setPadBuf(null);
@@ -71,6 +81,10 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   useEffect(() => {
     if (!order) ctx.go('orders');
   }, [order, ctx]);
+
+  useEffect(() => {
+    api.keshbekStatus().then(setKb).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -131,13 +145,20 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const grandTotal = subtotal + hourly + serviceFee - discountAmt;
   const paidTotal = paidItems.reduce((s, i) => s + itemLineTotal(i), 0);
 
-  const splitSum = split.cash + split.card + split.click;
+  const splitSum = split.cash + split.card + split.click + (split.cashback || 0);
   const splitRemaining = grandTotal - splitSum;
 
   const ITEMS_PER_PAGE = 5;
   const totalItemPages = Math.max(1, Math.ceil(allItems.length / ITEMS_PER_PAGE));
   const curPage = Math.min(itemPage, totalItemPages);
   const visibleItems = allItems.slice((curPage - 1) * ITEMS_PER_PAGE, curPage * ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    if (mode === 'partial' && (split.cashback || 0) > 0) {
+      setSplit((s) => ({ ...s, cashback: 0 }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const toggleItem = (id: string) => {
     if (mode !== 'partial') return;
@@ -149,9 +170,12 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
     });
   };
 
+  const kbUsed = payType === 'mixed' ? split.cashback || 0 : 0;
   const isValid =
     (mode === 'full' || selectedItems.length > 0) &&
     (payType !== 'mixed' || Math.abs(splitRemaining) < 100) &&
+    // KESHBEK: summa balans tekshiruvidan o'tgan va balansdan oshmagan bo'lishi shart
+    (kbUsed <= 0 || (kbBalance != null && kbUsed <= kbBalance && kbPhone.trim().length >= 9)) &&
     // Naqd: "Получено" summasi to'liq summadan KAM bo'lsa to'lash MUMKIN EMAS
     // (foydalanuvchi talabi: kam summa o'tib ketmasin). received >= grandTotal shart.
     (payType !== 'cash' || (received !== null && received >= grandTotal));
@@ -161,7 +185,10 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
     setBusy(true);
     try {
       const paymentType: PaymentType = payType === 'mixed' ? 'mixed' : payType;
-      const splitArg = payType === 'mixed' ? split : undefined;
+      const splitArg =
+        payType === 'mixed'
+          ? { ...split, cashbackPhone: (split.cashback || 0) > 0 ? kbPhone.trim() : undefined }
+          : undefined;
       if (mode === 'partial') {
         await ctx.onPartialPay(order._id, Array.from(selected), paymentType, splitArg, undefined);
       } else {
@@ -864,6 +891,73 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
                   />
                 </div>
               ))}
+
+              {kb.enabled && mode === 'full' && (
+                <div style={{ borderTop: `2px dashed ${T.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: 0.4 }}>
+                    КЕШБЭК <span style={{ fontWeight: 600, color: T.textMuted }}>(только онлайн)</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      inputMode="tel"
+                      value={kbPhone}
+                      onChange={(e) => {
+                        setKbPhone(e.target.value.replace(/[^\d+]/g, ''));
+                        setKbBalance(null);
+                        setKbErr('');
+                      }}
+                      placeholder="+7700…"
+                      style={{ flex: 1, height: 44, padding: '0 12px', background: T.surface, border: `2px solid ${T.borderStrong}`, fontSize: 17, fontFamily: T.font, fontWeight: 800 }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (kbBusy || kbPhone.trim().length < 9) return;
+                        setKbBusy(true);
+                        setKbErr('');
+                        try {
+                          const d = await api.keshbekBalance(kbPhone.trim());
+                          setKbBalance(d.balance || 0);
+                          // Avto-to'ldirish: qolgan summagacha balansdan
+                          setSplit((s) => {
+                            const others = s.cash + s.card + s.click;
+                            const room = Math.max(0, grandTotal - others);
+                            return { ...s, cashback: Math.min(d.balance || 0, room) };
+                          });
+                        } catch (e) {
+                          setKbBalance(null);
+                          setKbErr(e instanceof Error ? e.message : 'Не удалось проверить баланс');
+                        } finally {
+                          setKbBusy(false);
+                        }
+                      }}
+                      disabled={kbBusy || kbPhone.trim().length < 9}
+                      style={{ height: 44, padding: '0 14px', background: T.cta, color: '#fff', border: 'none', fontFamily: T.font, fontSize: 14, fontWeight: 900, cursor: 'pointer', opacity: kbBusy || kbPhone.trim().length < 9 ? 0.5 : 1 }}
+                    >
+                      {kbBusy ? '…' : 'Проверить'}
+                    </button>
+                  </div>
+                  {kbErr && (
+                    <div style={{ background: T.cancelledBg, color: T.cancelled, padding: '8px 12px', fontSize: 13, fontWeight: 700 }}>{kbErr}</div>
+                  )}
+                  {kbBalance != null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ minWidth: 90, fontSize: 14, fontWeight: 800 }}>
+                        Баланс: {fmt(kbBalance)}
+                      </div>
+                      <input
+                        inputMode="numeric"
+                        value={(split.cashback || 0) > 0 ? fmtN(split.cashback || 0) : ''}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                          setSplit((s) => ({ ...s, cashback: Math.min(v, kbBalance) }));
+                        }}
+                        placeholder="0"
+                        style={{ flex: 1, height: 44, padding: '0 12px', background: T.surface, border: `2px solid ${T.borderStrong}`, fontSize: 18, fontFamily: T.font, fontWeight: 800, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

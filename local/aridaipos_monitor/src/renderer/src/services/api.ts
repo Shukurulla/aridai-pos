@@ -1209,6 +1209,24 @@ class ApiService {
     });
   }
 
+  // KESHBEK — modul holati (tugma ko'rsatish uchun). Xato → o'chiq deb hisoblaymiz.
+  async keshbekStatus(): Promise<{ enabled: boolean; percent: number }> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const d = await this.request<any>('/api/keshbek/status');
+      return d.data || { enabled: false, percent: 0 };
+    } catch {
+      return { enabled: false, percent: 0 };
+    }
+  }
+
+  // KESHBEK balans (GLOBAL'dan, faqat online) — offline'da server 503 KESHBEK_OFFLINE.
+  async keshbekBalance(phone: string): Promise<{ balance: number; percent?: number }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = await this.request<any>(`/api/keshbek/balance/${encodeURIComponent(phone)}`);
+    return d.data || { balance: 0 };
+  }
+
   // Vozvrat — to'langan orderni qaytarish (paymentStatus → refunded).
   async refundOrder(orderId: string, reason?: string, pin?: string): Promise<void> {
     await this.request(`/api/orders/${orderId}/refund`, {

@@ -11,7 +11,7 @@ import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { checkManagerPin, kitchenStarted, pinError } from "../utils/manager-pin.js";
 import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
-import { createEarnSession } from "../utils/keshbek.js";
+import { createEarnSession, spendViaGlobal } from "../utils/keshbek.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
@@ -694,10 +694,28 @@ router.post("/:id/pay", async (req, res) => {
       }
       order.mixed = { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0, kaspi: 0, cashback: cb };
       if (cb > 0) {
+        // SPEND — FAQAT ONLINE: global balansdan ATOMIK yechamiz (to'lovdan OLDIN).
+        // Muvaffaqiyatsiz (balans yetmaydi / offline) → to'lov BUTUNLAY rad,
+        // hech narsa o'zgarmagan (2026-05-29 qaror: offline spend yo'q).
+        const cbPhone = s.cashbackPhone || req.body.cashbackPhone || null;
+        try {
+          const r = await spendViaGlobal({ phone: cbPhone, amount: cb, orderId: order._id });
+          if (r.json?.status !== "success") {
+            return res.status(400).json({
+              success: false,
+              error: { message: r.json?.message || "Не удалось списать кешбэк" },
+            });
+          }
+        } catch {
+          return res.status(503).json({
+            success: false,
+            error: { code: "KESHBEK_OFFLINE", message: "Кешбэк недоступен офлайн. Оплатите наличными или картой." },
+          });
+        }
         order.cashback = {
           ...(order.cashback?.toObject?.() || order.cashback || {}),
           spent: cb,
-          clientPhone: req.body.cashbackPhone || order.cashback?.clientPhone || null,
+          clientPhone: cbPhone,
         };
       }
     }

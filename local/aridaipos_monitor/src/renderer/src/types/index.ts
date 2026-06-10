@@ -78,6 +78,10 @@ export interface PaymentSplit {
   cash: number;
   card: number;
   click: number;
+  // KESHBEK (modul yoqiq bo'lsa): balansdan to'lanadigan qism + mijoz telefoni.
+  // Backend split.cashback>0 ko'rsa global'dan atomik spend qiladi (faqat online).
+  cashback?: number;
+  cashbackPhone?: string;
 }
 
 export type OrderType = 'dine-in' | 'saboy';
