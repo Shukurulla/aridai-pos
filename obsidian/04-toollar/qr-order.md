@@ -2,7 +2,7 @@
 tags: [tool]
 created: 2026-05-28
 toolKey: qrOrder
-status: 📝
+status: ✅ core implemented (2026-06-10)
 default: OFF
 ---
 
@@ -11,7 +11,7 @@ default: OFF
 ## Meta
 
 - **Key:** `qrOrder`
-- **Status:** 📝 dizayn
+- **Status:** ✅ core implemented (2026-06-10) — public menyu/so'rov/status + kassir approve/reject (filial_admin QR заказы) + stol QR yaratish/chop etish + mijoz sahifasi /qr/:slug. Qoldi: POS monitor'da push banner (hozircha filial_admin poll), offline lokal webserver
 - **Default:** OFF
 - **Version:** 1
 - **requires:** core (table)
