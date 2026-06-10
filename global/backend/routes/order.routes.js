@@ -5,6 +5,7 @@ import orderModel from "../models/order.model.js";
 import shiftModel from "../models/shift.model.js";
 import foodModel from "../models/food.model.js";
 import tableModel from "../models/table.model.js";
+import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
 import serviceModel from "../models/service.model.js";
 import usersModel from "../models/users.model.js";
 import { emitToBranch } from "../utils/socket.js";
@@ -224,7 +225,15 @@ router.post("/place", authMiddleware, async (req, res) => {
       syncStatus: "pending",
     };
     recalcOrder(orderData);
+
+    // SKLAD (toggle yoqiq bo'lsa): O1 oversell-blok — ingredient yetmasa RAD
+    const stockChk = await checkStockAvailability(restaurantId, branch, foods);
+    if (!stockChk.ok) {
+      return res.status(400).json({ status: "error", code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) });
+    }
+
     const order = await orderModel.create(orderData);
+    deductForOrder(order, foods, req.userData._id); // sklad chiqim — fire-and-forget
 
     emitToBranch(branch, "orders:changed", { orderId: String(order._id), kind: "created" });
     // Cook push FAQAT possiz rejimda (branch flag YOKI order possiz deb belgilangan)
@@ -254,6 +263,7 @@ router.post("/:id/items", authMiddleware, async (req, res) => {
       return res.status(400).json({ status: "error", message: "Добавьте блюда" });
     }
 
+    const addedFoods = [];
     let added = 0;
     for (const it of items) {
       const food = await foodModel.findOne({ _id: it.foodId, branch: order.branch });
@@ -272,14 +282,22 @@ router.post("/:id/items", authMiddleware, async (req, res) => {
         f.hourlyPrice = food.price;
         f.hourlyStartedAt = new Date();
       }
-      order.foods.push(f);
+      addedFoods.push(f);
       added += 1;
     }
     if (!added) return res.status(400).json({ status: "error", message: "Блюда не найдены" });
 
+    // SKLAD: qo'shilayotgan taomlar uchun O1 tekshiruv (yetmasa RAD)
+    const stockChk = await checkStockAvailability(order.restaurantId, order.branch, addedFoods);
+    if (!stockChk.ok) {
+      return res.status(400).json({ status: "error", code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) });
+    }
+    order.foods.push(...addedFoods);
+
     recalcOrder(order);
     order.syncStatus = "pending";
     await order.save();
+    deductForOrder(order, addedFoods, req.userData._id); // sklad chiqim — fire-and-forget
 
     emitToBranch(order.branch, "orders:changed", { orderId: String(order._id) });
     const populated = await populateOrder(orderModel.findById(id));
@@ -484,6 +502,7 @@ router.patch("/:id/cancel", authMiddleware, async (req, res) => {
     order.cancelledBy = req.userData._id;
     order.cancelledAt = new Date();
     await order.save();
+    restoreForOrder(order, null, req.userData._id); // sklad to'liq qaytim (movement kompensatsiya)
 
     emitToBranch(order.branch, "orders:changed", { orderId: String(order._id) });
     const populated = await populateOrder(orderModel.findById(id));
@@ -555,6 +574,7 @@ router.patch("/:id/items/:itemId/cancel", authMiddleware, async (req, res) => {
       changedBy: req.userData._id,
       changedAt: new Date(),
     });
+    restoreForOrder(order, [{ foodId: item.foodId, quantity: q }], req.userData._id); // sklad qaytim
 
     recalcOrder(order);
 

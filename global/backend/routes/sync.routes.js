@@ -8,6 +8,7 @@ import tableModel from "../models/table.model.js";
 import serviceModel from "../models/service.model.js";
 import discountModel from "../models/discount.model.js";
 import usersModel from "../models/users.model.js";
+import { ingredientModel, stockModel, stockMovementModel } from "../models/sklad.model.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import expenseModel from "../models/expense.model.js";
@@ -85,7 +86,7 @@ router.get("/bootstrap", async (req, res) => {
     const branchId = req.branch._id;
     const restaurantId = req.branch.restaurant;
 
-    const [restaurant, branch, categories, foods, tables, services, discounts, users] = await Promise.all([
+    const [restaurant, branch, categories, foods, tables, services, discounts, users, ingredients, stocks] = await Promise.all([
       restaurantsModel.findById(restaurantId),
       branchesModel.findById(branchId),
       categoryModel.find({ branch: branchId }),
@@ -95,11 +96,14 @@ router.get("/bootstrap", async (req, res) => {
       discountModel.find({ branch: branchId }),
       // Local auth uchun parol hash kerak (POS local'da login qiladi, offline ham)
       usersModel.find({ branch: branchId }).select("+password +pin +managerPin"),
+      // SKLAD mirror — offline'da ham O1 tekshiruv ishlasin (sklad.md)
+      ingredientModel.find({ branch: branchId }),
+      stockModel.find({ branch: branchId }),
     ]);
 
     return res.status(200).json({
       status: "success",
-      data: { restaurant, branch, categories, foods, tables, services, discounts, users, syncedAt: new Date() },
+      data: { restaurant, branch, categories, foods, tables, services, discounts, users, ingredients, stocks, syncedAt: new Date() },
     });
   } catch (error) {
     return res.status(500).json({ status: "error", message: error.message });
@@ -190,9 +194,9 @@ router.put("/service", async (req, res) => {
 router.post("/push", async (req, res) => {
   try {
     const branchId = String(req.branch._id);
-    const { orders = [], shifts = [], expenses = [], advances = [] } = req.body;
+    const { orders = [], shifts = [], expenses = [], advances = [], movements = [] } = req.body;
 
-    const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, rejected: [] };
+    const accepted = { orders: 0, shifts: 0, expenses: 0, advances: 0, movements: 0, rejected: [] };
 
     // Bitta hujjatni filial + versiya tekshiruvi bilan apply qiluvchi yordamchi.
     // return true → hisobga olindi (apply yoki idempotent); false → rad etildi.
@@ -237,6 +241,28 @@ router.post("/push", async (req, res) => {
     for (const o of orders) if (await applyOne(orderModel, o, "order")) accepted.orders++;
     for (const e of expenses) if (await applyOne(expenseModel, e, "expense")) accepted.expenses++;
     for (const a of advances) if (await applyOne(advanceModel, a, "advance")) accepted.advances++;
+
+    // SKLAD movement'lar — APPEND-ONLY event: _id idempotent (insert-if-absent) +
+    // balans $inc. Versiya konflikti YO'Q (movement o'zgarmas) → additive merge
+    // (obsidian/04-toollar/sklad.md offline rejim qoidasi).
+    for (const m of movements) {
+      if (String(m.branch) !== branchId) {
+        accepted.rejected.push({ type: "movement", id: String(m._id), reason: "TENANT_MISMATCH" });
+        continue;
+      }
+      const exists = await stockMovementModel.findById(m._id).lean();
+      if (exists) {
+        accepted.movements++; // idempotent — allaqachon qo'llangan
+        continue;
+      }
+      await stockMovementModel.create({ ...m, syncStatus: "synced" });
+      await stockModel.updateOne(
+        { branch: m.branch, ingredientId: m.ingredientId },
+        { $inc: { balance: Number(m.delta) || 0 }, $set: { lastMovementAt: new Date(), restaurantId: m.restaurantId } },
+        { upsert: true },
+      );
+      accepted.movements++;
+    }
 
     if (accepted.orders || accepted.shifts || accepted.expenses || accepted.advances) {
       await audit.log({

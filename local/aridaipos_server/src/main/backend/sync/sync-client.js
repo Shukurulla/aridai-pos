@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import config from "../config/index.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import branchesModel from "../models/branches.model.js";
@@ -11,6 +12,7 @@ import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import expenseModel from "../models/expense.model.js";
 import advanceModel from "../models/advance.model.js";
+import { ingredientModel, stockModel, stockMovementModel } from "../models/sklad.model.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Global'dan kelgan hujjatni lokal Mongo'ga BIR XIL _id bilan yozadi (mirror).
@@ -63,21 +65,49 @@ export async function bootstrapSync() {
     services: await upsertMany(serviceModel, d.services),
     discounts: await upsertMany(discountModel, d.discounts),
     users: await upsertMany(usersModel, d.users),
+    ingredients: await upsertMany(ingredientModel, d.ingredients),
+    stocks: await upsertStocks(d.stocks),
   };
   return { counts, syncedAt: d.syncedAt, menuSig };
 }
 
+// SKLAD stock mirror — (branch, ingredientId) bo'yicha (local stock _id global
+// bilan farq qilishi mumkin — balans hosilaviy, movement'lar haqiqat manbai).
+// Eslatma: local'da hali PUSH bo'lmagan movement bo'lsa, balans vaqtincha eski
+// ko'rinadi (≤12s) — push → global $inc → keyingi bootstrap to'g'ri qaytaradi.
+async function upsertStocks(docs) {
+  let n = 0;
+  for (const st of docs || []) {
+    if (!st?.ingredientId) continue;
+    await stockModel.collection.updateOne(
+      { branch: new mongoose.Types.ObjectId(String(st.branch)), ingredientId: new mongoose.Types.ObjectId(String(st.ingredientId)) },
+      {
+        $set: {
+          balance: st.balance || 0,
+          lowAlertThreshold: st.lowAlertThreshold ?? 10,
+          lastMovementAt: st.lastMovementAt || null,
+          restaurantId: new mongoose.Types.ObjectId(String(st.restaurantId)),
+          syncStatus: "synced",
+        },
+      },
+      { upsert: true },
+    );
+    n++;
+  }
+  return n;
+}
+
 // ===== Push — lokal order/smena/rasxod/avans global'ga =====
-export async function pushSync({ orders = [], shifts = [], expenses = [], advances = [] } = {}) {
+export async function pushSync({ orders = [], shifts = [], expenses = [], advances = [], movements = [] } = {}) {
   if (!config.branchToken) throw new Error("BRANCH_TOKEN yo'q");
-  if (!orders.length && !shifts.length && !expenses.length && !advances.length) {
-    return { accepted: { orders: 0, shifts: 0, expenses: 0, advances: 0 } };
+  if (!orders.length && !shifts.length && !expenses.length && !advances.length && !movements.length) {
+    return { accepted: { orders: 0, shifts: 0, expenses: 0, advances: 0, movements: 0 } };
   }
 
   const res = await fetch(`${config.globalUrl}/api/sync/push`, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.branchToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ orders, shifts, expenses, advances }),
+    body: JSON.stringify({ orders, shifts, expenses, advances, movements }),
   });
   const json = await res.json();
   if (json.status !== "success") {
@@ -113,19 +143,21 @@ export async function pushSync({ orders = [], shifts = [], expenses = [], advanc
   await markByStatus(shiftModel, shifts, "shift");
   await markByStatus(expenseModel, expenses, "expense");
   await markByStatus(advanceModel, advances, "advance");
+  await markByStatus(stockMovementModel, movements, "movement");
   return json;
 }
 
 // Hali global'ga yuborilmagan (sync kerak) order/smena/rasxod/avanslarni topadi
 export async function collectPending() {
   const pend = { syncStatus: { $in: ["pending", "in_progress"] } };
-  const [orders, shifts, expenses, advances] = await Promise.all([
+  const [orders, shifts, expenses, advances, movements] = await Promise.all([
     orderModel.find(pend).limit(200).lean(),
     shiftModel.find(pend).limit(50).lean(),
     expenseModel.find(pend).limit(200).lean(),
     advanceModel.find(pend).limit(200).lean(),
+    stockMovementModel.find(pend).limit(500).lean(), // sklad — append-only
   ]);
-  return { orders, shifts, expenses, advances };
+  return { orders, shifts, expenses, advances, movements };
 }
 
 // ===== Global'dan O'ZGARGAN orderlarni tortish (cancel/tahrir propagatsiyasi) =====
@@ -299,7 +331,7 @@ export async function runOrderSync() {
     const pending = await collectPending();
     const pushedIds = new Set();
     const pushedShiftIds = new Set();
-    if (pending.orders.length || pending.shifts.length || pending.expenses.length || pending.advances.length) {
+    if (pending.orders.length || pending.shifts.length || pending.expenses.length || pending.advances.length || pending.movements.length) {
       await pushSync(pending);
       pending.orders.forEach((o) => pushedIds.add(String(o._id)));
       pending.shifts.forEach((s) => pushedShiftIds.add(String(s._id)));

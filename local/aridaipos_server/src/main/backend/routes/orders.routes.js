@@ -10,6 +10,7 @@ import restaurantsModel from "../models/restaurants.model.js";
 import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
 import { checkManagerPin, kitchenStarted, pinError } from "../utils/manager-pin.js";
+import { checkStockAvailability, deductForOrder, restoreForOrder, stockErrorMessage } from "../utils/sklad.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
@@ -183,7 +184,18 @@ router.post("/", async (req, res) => {
       syncStatus: "pending",
     };
     calculateOrderTotals(orderData);
+
+    // SKLAD (toggle yoqiq bo'lsa): O1 oversell-blok — ingredient yetmasa RAD
+    const stockChk = await checkStockAvailability(req.userData.restaurantId, branch, foods);
+    if (!stockChk.ok) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) },
+      });
+    }
+
     const order = await orderModel.create(orderData);
+    deductForOrder(order, foods, req.userData.id || req.userData._id); // sklad chiqim — fire-and-forget
     firePrintKitchen(String(order._id)); // povar (kuxnya) cheki — fire-and-forget
     return res.json({ success: true, isNewOrder: true, data: mapOrder(order, tableDoc) });
   } catch (e) {
@@ -229,7 +241,18 @@ router.post("/saboy", async (req, res) => {
       syncStatus: "pending",
     };
     calculateOrderTotals(orderData);
+
+    // SKLAD (toggle yoqiq bo'lsa): O1 oversell-blok — ingredient yetmasa RAD
+    const stockChk = await checkStockAvailability(req.userData.restaurantId, branch, foods);
+    if (!stockChk.ok) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) },
+      });
+    }
+
     const order = await orderModel.create(orderData);
+    deductForOrder(order, foods, req.userData.id || req.userData._id); // sklad chiqim — fire-and-forget
     firePrintKitchen(String(order._id)); // povar (kuxnya) cheki
     return res.json({ success: true, isNewOrder: true, data: mapOrder(order, null) });
   } catch (e) {
@@ -378,10 +401,19 @@ router.post("/:id/items", async (req, res) => {
     if (order.paymentStatus === "paid") return res.status(400).json({ success: false, error: { message: "Заказ уже оплачен" } });
 
     const newFoods = await buildFoods(req.body.items, req.userData.branch);
+    // SKLAD: qo'shilayotgan taomlar uchun O1 tekshiruv
+    const stockChk = await checkStockAvailability(req.userData.restaurantId, order.branch, newFoods);
+    if (!stockChk.ok) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) },
+      });
+    }
     order.foods.push(...newFoods);
     calculateOrderTotals(order);
     order.syncStatus = "pending";
     await order.save();
+    deductForOrder(order, newFoods, req.userData.id || req.userData._id); // sklad chiqim
     // Qo'shilgan taomlar → povar (kuxnya) "ДОБАВЛЕНО ×N" cheki (faqat yangilari)
     firePrintKitchen(
       String(order._id),
@@ -448,6 +480,18 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
       const chk = await checkManagerPin(order.branch, req.body?.pin);
       if (!chk.ok) return pinError(res, req.body?.pin);
     }
+    // SKLAD: miqdor OSHSA — qo'shimcha qism uchun O1 tekshiruv
+    if (qty > prevQty) {
+      const stockChk = await checkStockAvailability(req.userData.restaurantId, order.branch, [
+        { foodId: item.foodId, quantity: qty - prevQty },
+      ]);
+      if (!stockChk.ok) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "STOCK_INSUFFICIENT", message: stockErrorMessage(stockChk.missing) },
+        });
+      }
+    }
     item.quantity = qty;
     item.cancels = []; // to'g'ridan-to'g'ri miqdor → inc/dec tarixini tozalaymiz
 
@@ -457,6 +501,9 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
     // Miqdor o'zgarsa povarga xabar: oshsa "ДОБАВЛЕНО ×N", kamaysa "ОТМЕНЕНО ×N"
     // (left = qancha qoldi → povar yakuniy nechta qilishni biladi).
     const delta = qty - prevQty;
+    // SKLAD: oshgan qism chiqim, kamaygan qism qaytim
+    if (delta > 0) deductForOrder(order, [{ foodId: item.foodId, quantity: delta }], req.userData.id || req.userData._id);
+    else if (delta < 0) restoreForOrder(order, [{ foodId: item.foodId, quantity: -delta }], req.userData.id || req.userData._id);
     if (delta !== 0) {
       firePrintKitchen(String(order._id), [
         { foodId: String(item.foodId), name: item.foodName, delta, left: qty },
@@ -512,6 +559,7 @@ router.delete("/:id/items/:itemId", async (req, res) => {
       calculateOrderTotals(order);
       order.syncStatus = "pending";
       await order.save();
+      restoreForOrder(order, [{ foodId: item.foodId, quantity: cur }], req.userData.id || req.userData._id); // sklad qaytim
       // Povarga "ОТМЕНЕНО ×cur" cheki (osha stol/taom to'liq bekor qilindi)
       firePrintKitchen(String(order._id), [
         { foodId: String(item.foodId), name: item.foodName, delta: -cur, left: 0 },
@@ -555,6 +603,7 @@ router.post("/:id/cancel", async (req, res) => {
       order.syncStatus = "pending";
       await order.save();
 
+      restoreForOrder(order, null, req.userData.id || req.userData._id); // sklad to'liq qaytim (movement kompensatsiya)
       // Povarga butun zakaz bekor qilingani — barcha taomlar "ОТМЕНЕНО",
       // sarlavha "ЗАКАЗ ОТМЕНЁН" (osha stoldagi hamma narsani to'xtatadi).
       if (cancelItems.length) {

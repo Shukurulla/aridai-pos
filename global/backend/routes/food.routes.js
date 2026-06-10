@@ -29,6 +29,10 @@ router.post("/create", authMiddleware, upload.single("image"), tenantGuard, asyn
         .status(400)
         .json({ status: "error", message: "Bunday category topilmadi" });
 
+    // SKLAD retsept — FormData'da JSON string bo'lib keladi
+    if (typeof req.body.recipe === "string") {
+      try { req.body.recipe = JSON.parse(req.body.recipe); } catch { delete req.body.recipe; }
+    }
     const food = await foodModel.create({
       ...req.body,
       branch,
@@ -85,6 +89,10 @@ router.put("/:id", authMiddleware, tenantResource(foodModel), upload.single("ima
   try {
     const { id } = req.params;
     const { branch, category } = req.body;
+    // SKLAD retsept — FormData'da JSON string bo'lib keladi
+    if (typeof req.body.recipe === "string") {
+      try { req.body.recipe = JSON.parse(req.body.recipe); } catch { delete req.body.recipe; }
+    }
     const updateData = {
       ...req.body,
     };
