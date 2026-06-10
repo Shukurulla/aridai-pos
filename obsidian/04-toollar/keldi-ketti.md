@@ -2,7 +2,7 @@
 tags: [tool]
 created: 2026-05-28
 toolKey: keldiKetti
-status: 📝
+status: ✅ core implemented (2026-06-10)
 default: OFF
 ---
 
@@ -11,7 +11,7 @@ default: OFF
 ## Meta
 
 - **Key:** `keldiKetti`
-- **Status:** 📝 dizayn
+- **Status:** ✅ core implemented (2026-06-10) — check-in/out (mobil karta + admin qo'lda), kechikish/shtraf, payroll 5 tip (daily/monthly/fixedShift/percentService/perDish). Qoldi: geo-fence, alohida schedule entity, late_warning push, oylik avto-hisob scheduler
 - **Default:** OFF
 - **Version:** 1
 - **requires:** core (user)
