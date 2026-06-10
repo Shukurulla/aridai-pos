@@ -854,9 +854,9 @@ export function CashierApp() {
   );
 
   const handleChangeItemQty = useCallback(
-    async (orderId: string, itemId: string, quantity: number) => {
+    async (orderId: string, itemId: string, quantity: number, pin?: string) => {
       try {
-        await api.updateItemQuantity(orderId, itemId, quantity);
+        await api.updateItemQuantity(orderId, itemId, quantity, pin);
         await loadData();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Не удалось изменить количество';
@@ -868,9 +868,9 @@ export function CashierApp() {
   );
 
   const handleCancelItem = useCallback(
-    async (orderId: string, itemId: string, reason?: string) => {
+    async (orderId: string, itemId: string, reason?: string, pin?: string) => {
       try {
-        await api.cancelItem(orderId, itemId, reason);
+        await api.cancelItem(orderId, itemId, reason, pin);
         await loadData();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Не удалось отменить позицию';
@@ -882,9 +882,9 @@ export function CashierApp() {
   );
 
   const handleCancelOrder = useCallback(
-    async (orderId: string, reason?: string) => {
+    async (orderId: string, reason?: string, pin?: string) => {
       try {
-        await api.cancelOrder(orderId, reason);
+        await api.cancelOrder(orderId, reason, pin);
         await loadData();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Не удалось отменить заказ';
@@ -896,9 +896,9 @@ export function CashierApp() {
   );
 
   const handleRefund = useCallback(
-    async (orderId: string, reason?: string) => {
+    async (orderId: string, reason?: string, pin?: string) => {
       try {
-        await api.refundOrder(orderId, reason);
+        await api.refundOrder(orderId, reason, pin);
         await loadData();
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Не удалось оформить возврат';

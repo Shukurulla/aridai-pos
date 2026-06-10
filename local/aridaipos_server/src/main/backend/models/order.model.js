@@ -144,6 +144,7 @@ const orderSchema = new mongoose.Schema(
     // ===== Vozvrat (refund) — to'langan orderni qaytarish =====
     refundedAt: { type: Date, default: null },
     refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+    refundApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null }, // manager PIN
     refundReason: { type: String, default: null },
 
     mixed: {

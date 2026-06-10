@@ -10,6 +10,7 @@ export default function StaffForm({ initial, branchId, onClose, onSaved }) {
   const [phone, setPhone] = useState(initial?.phone || "");
   const [role, setRole] = useState(initial?.role || "cashier");
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState(""); // Manager PIN (отмена/возврат на POS)
   const [isActive, setIsActive] = useState(
     initial?.isActive === undefined ? true : initial.isActive
   );
@@ -20,6 +21,7 @@ export default function StaffForm({ initial, branchId, onClose, onSaved }) {
     if (!name.trim()) return "Введите имя сотрудника";
     if (!isEdit && !phone.trim()) return "Введите номер телефона";
     if (!isEdit && !password) return "Введите пароль";
+    if (pin && !/^\d{4,6}$/.test(pin.trim())) return "PIN — 4-6 цифр";
     return "";
   }
 
@@ -38,6 +40,7 @@ export default function StaffForm({ initial, branchId, onClose, onSaved }) {
       fd.append("name", name.trim());
       fd.append("role", role);
       if (password) fd.append("password", password);
+      if (pin.trim()) fd.append("pin", pin.trim());
 
       if (isEdit) {
         fd.append("isActive", String(isActive));
@@ -117,6 +120,28 @@ export default function StaffForm({ initial, branchId, onClose, onSaved }) {
                 autoComplete="new-password"
               />
             </div>
+
+            {role === "branch_admin" && (
+              <div className="field">
+                <label htmlFor="spin">
+                  PIN менеджера{" "}
+                  <span className="hint">
+                    (4-6 цифр — подтверждение отмен/возвратов на POS{isEdit ? "; пусто — не менять" : ""})
+                  </span>
+                </label>
+                <input
+                  id="spin"
+                  className="input"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                  placeholder="••••"
+                  autoComplete="off"
+                />
+              </div>
+            )}
 
             {isEdit && (
               <div className="field" style={{ marginBottom: 0 }}>

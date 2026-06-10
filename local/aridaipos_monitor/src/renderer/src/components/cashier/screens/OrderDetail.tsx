@@ -55,21 +55,28 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
   // POS-webview — поэтому свой оверлей).
   const [modalErr, setModalErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Manager PIN — oshxona boshlagan bekor/kamaytirish va vozvrat uchun
+  // (server PIN_REQUIRED qaytarsa shu maydon bilan qayta yuboriladi).
+  const [pin, setPin] = useState('');
 
   const askQty = (it: OrderItem) => {
     setModalErr(null);
+    setPin('');
     setModal({ kind: 'qty', it, value: it.quantity });
   };
   const askCancelItem = (it: OrderItem) => {
     setModalErr(null);
+    setPin('');
     setModal({ kind: 'cancelItem', it });
   };
   const askCancelOrder = () => {
     setModalErr(null);
+    setPin('');
     setModal({ kind: 'cancelOrder' });
   };
   const askRefund = () => {
     setModalErr(null);
+    setPin('');
     setModal({ kind: 'refund' });
   };
 
@@ -78,18 +85,19 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
     setBusy(true);
     setModalErr(null);
     try {
+      const pinArg = pin.trim() || undefined;
       if (modal.kind === 'qty') {
         const q = Math.max(1, Math.floor(modal.value || 1));
-        if (q !== modal.it.quantity) await ctx.onChangeItemQty(order._id, modal.it._id, q);
+        if (q !== modal.it.quantity) await ctx.onChangeItemQty(order._id, modal.it._id, q, pinArg);
       } else if (modal.kind === 'cancelItem') {
-        await ctx.onCancelItem(order._id, modal.it._id);
+        await ctx.onCancelItem(order._id, modal.it._id, undefined, pinArg);
       } else if (modal.kind === 'cancelOrder') {
-        await ctx.onCancelOrder(order._id);
+        await ctx.onCancelOrder(order._id, undefined, pinArg);
         setModal(null);
         ctx.go('orders'); // bekor qilingach ro'yxatga qaytamiz
         return;
       } else if (modal.kind === 'refund') {
-        await ctx.onRefund(order._id);
+        await ctx.onRefund(order._id, undefined, pinArg);
         setModal(null);
         ctx.go('orders'); // qaytarilgach ro'yxatga qaytamiz
         return;
@@ -733,6 +741,33 @@ export function OrderDetailScreen({ ctx }: { ctx: ScreenCtx }) {
                 </div>
               </>
             )}
+
+            {/* Manager PIN — talab qilinganda kiritiladi (PIN sozlanmagan filialda bo'sh qoldiriladi) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, whiteSpace: 'nowrap' }}>
+                PIN менеджера
+              </span>
+              <input
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="если требуется"
+                inputMode="numeric"
+                type="password"
+                style={{
+                  flex: 1,
+                  height: 44,
+                  padding: '0 12px',
+                  fontSize: 18,
+                  fontWeight: 800,
+                  letterSpacing: 4,
+                  fontFamily: T.font,
+                  border: `2px solid ${T.border}`,
+                  background: T.surface,
+                  color: T.text,
+                  outline: 'none',
+                }}
+              />
+            </div>
 
             {modalErr && (
               <div style={{ background: T.cancelledBg, color: T.cancelled, padding: '10px 14px', fontWeight: 700, fontSize: 14 }}>

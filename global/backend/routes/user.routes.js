@@ -6,7 +6,7 @@ import restoranMiddleware from "../middlewares/restoranAuth.middleware.js";
 import { requireRole } from "../middlewares/role.middleware.js";
 import { tenantGuard, assertBranchInRestaurant } from "../middlewares/tenant.middleware.js";
 import upload from "../middlewares/upload.middleware.js";
-import { hashPassword, comparePassword, dummyCompare } from "../utils/password.js";
+import { hashPassword, comparePassword, dummyCompare, hashPin } from "../utils/password.js";
 import { normalizePhone, countryFromCurrency } from "../utils/phone.js";
 import { signUserToken, signRefreshToken } from "../utils/token.js";
 import { audit } from "../utils/audit.js";
@@ -79,6 +79,10 @@ router.post("/register", restoranMiddleware, upload.single("image"), async (req,
       role,
       image: req.file ? `/uploads/${req.file.filename}` : req.body.image,
       password: await hashPassword(password),
+      // Manager PIN (ixtiyoriy, 4-6 raqam) — bekor/vozvrat tasdig'i uchun
+      ...(req.body.pin && /^\d{4,6}$/.test(String(req.body.pin).trim())
+        ? { pin: await hashPin(String(req.body.pin).trim()) }
+        : {}),
       ...parseStaffExtras(req.body), // maosh + cook taomlari
     });
 
@@ -122,6 +126,10 @@ router.post("/staff", authMiddleware, requireRole("branch_admin", "owner", "syst
       role,
       image: req.file ? `/uploads/${req.file.filename}` : req.body.image,
       password: await hashPassword(password),
+      // Manager PIN (ixtiyoriy, 4-6 raqam) — bekor/vozvrat tasdig'i uchun
+      ...(req.body.pin && /^\d{4,6}$/.test(String(req.body.pin).trim())
+        ? { pin: await hashPin(String(req.body.pin).trim()) }
+        : {}),
       ...parseStaffExtras(req.body), // maosh (waiter) + biriktirilgan taomlar (cook)
     });
 
@@ -237,6 +245,14 @@ router.put("/owner/:id", restoranMiddleware, upload.single("image"), async (req,
     if (isActive !== undefined) updateData.isActive = isActive === true || isActive === "true";
     if (req.file) updateData.image = `/uploads/${req.file.filename}`;
     if (req.body.password) updateData.password = await hashPassword(req.body.password);
+    // Manager PIN (bekor qilish/vozvrat tasdig'i) — 4-6 raqam; "" → o'chirish
+    if (req.body.pin !== undefined && req.body.pin !== null) {
+      const p = String(req.body.pin).trim();
+      if (p === "") updateData.pin = null;
+      else if (!/^\d{4,6}$/.test(p)) {
+        return res.status(400).json({ status: "error", message: "PIN — 4-6 цифр" });
+      } else updateData.pin = await hashPin(p);
+    }
     Object.assign(updateData, parseStaffExtras(req.body)); // maosh + cook taomlari
 
     // Parol/role/isActive o'zgarsa — barcha tokenlar bekor (tokenVersion++)

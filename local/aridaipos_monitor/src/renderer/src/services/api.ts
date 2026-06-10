@@ -1184,36 +1184,36 @@ class ApiService {
 
   // Изменение количества блюда (например 10 → 2). quantity ≥ 1.
   // На бэке эмитит item_quantity_changed → кухня печатает «ОТКАЗ БЛЮДА».
-  async updateItemQuantity(orderId: string, itemId: string, quantity: number): Promise<void> {
+  async updateItemQuantity(orderId: string, itemId: string, quantity: number, pin?: string): Promise<void> {
     await this.request(`/api/orders/${orderId}/items/${itemId}/quantity`, {
       method: 'PATCH',
-      body: JSON.stringify({ quantity }),
+      body: JSON.stringify({ quantity, pin: pin || undefined }),
     });
   }
 
   // Отмена позиции — блюдо убирается из заказа (на бэке "dec" cancel → effQty 0 →
   // total пересчитывается). Последнее блюдо удалить нельзя (отмените весь заказ).
-  async cancelItem(orderId: string, itemId: string, reason?: string): Promise<void> {
+  async cancelItem(orderId: string, itemId: string, reason?: string, pin?: string): Promise<void> {
     await this.request(`/api/orders/${orderId}/items/${itemId}`, {
       method: 'DELETE',
-      body: JSON.stringify({ reason: reason || null }),
+      body: JSON.stringify({ reason: reason || null, pin: pin || undefined }),
     });
   }
 
   // Отмена всего заказа (isCancel). Оплаченный заказ отменить нельзя. Стол
   // освобождается автоматически (занятость считается по открытым заказам).
-  async cancelOrder(orderId: string, reason?: string): Promise<void> {
+  async cancelOrder(orderId: string, reason?: string, pin?: string): Promise<void> {
     await this.request(`/api/orders/${orderId}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ reason: reason || null }),
+      body: JSON.stringify({ reason: reason || null, pin: pin || undefined }),
     });
   }
 
   // Vozvrat — to'langan orderni qaytarish (paymentStatus → refunded).
-  async refundOrder(orderId: string, reason?: string): Promise<void> {
+  async refundOrder(orderId: string, reason?: string, pin?: string): Promise<void> {
     await this.request(`/api/orders/${orderId}/refund`, {
       method: 'POST',
-      body: JSON.stringify({ reason: reason || null }),
+      body: JSON.stringify({ reason: reason || null, pin: pin || undefined }),
     });
   }
 

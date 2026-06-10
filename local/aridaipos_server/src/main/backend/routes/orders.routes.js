@@ -9,6 +9,7 @@ import branchesModel from "../models/branches.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import usersModel from "../models/users.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
+import { checkManagerPin, kitchenStarted, pinError } from "../utils/manager-pin.js";
 import { firePrintKitchen } from "../print-hook.js";
 
 // Kepket frontend kutgan order endpointlari (format: items[], grandTotal, ...)
@@ -442,6 +443,11 @@ router.patch("/:id/items/:itemId/quantity", async (req, res) => {
 
     const prevQty = effQty(item); // o'zgarishdan oldingi (effektiv) miqdor
     const qty = Math.max(1, Number(req.body.quantity) || 1);
+    // Oshxona boshlagan taomni KAMAYTIRISH → manager PIN (graceful)
+    if (qty < prevQty && kitchenStarted(item)) {
+      const chk = await checkManagerPin(order.branch, req.body?.pin);
+      if (!chk.ok) return pinError(res, req.body?.pin);
+    }
     item.quantity = qty;
     item.cancels = []; // to'g'ridan-to'g'ri miqdor → inc/dec tarixini tozalaymiz
 
@@ -487,11 +493,20 @@ router.delete("/:id/items/:itemId", async (req, res) => {
       if (activeLeft === 0) {
         return res.status(400).json({ success: false, error: { message: "Нельзя отменить последнее блюдо — отмените весь заказ" } });
       }
+      // Oshxona taomni boshlagan → manager PIN (firibgarlik-nazorati.md). PIN
+      // sozlanmagan filialda talab qilinmaydi (graceful).
+      let approver = null;
+      if (kitchenStarted(item)) {
+        const chk = await checkManagerPin(order.branch, req.body?.pin);
+        if (!chk.ok) return pinError(res, req.body?.pin);
+        approver = chk.approver;
+      }
       item.cancels.push({
         status: "dec",
         changeVal: cur,
         changeReason: req.body?.reason || "Отмена позиции",
         changedBy: req.userData.id || req.userData.userId || req.userData._id || null,
+        approvedBy: approver,
         changedAt: new Date(),
       });
       calculateOrderTotals(order);
@@ -521,9 +536,16 @@ router.post("/:id/cancel", async (req, res) => {
 
     if (!order.isCancel) {
       // Bekor qilishdan OLDIN aktiv taomlarni olamiz (povar "ОТМЕНЕНО" cheki uchun)
-      const cancelItems = (order.foods || [])
-        .filter((f) => !f.isDeleted && effQty(f) > 0)
-        .map((f) => ({ foodId: String(f.foodId), name: f.foodName, delta: -effQty(f), left: 0 }));
+      const activeFoods = (order.foods || []).filter((f) => !f.isDeleted && effQty(f) > 0);
+      const cancelItems = activeFoods.map((f) => ({ foodId: String(f.foodId), name: f.foodName, delta: -effQty(f), left: 0 }));
+
+      // Oshxona biror taomni boshlagan → manager PIN (graceful — PIN sozlanmagan
+      // filialda talab qilinmaydi)
+      if (activeFoods.some(kitchenStarted)) {
+        const chk = await checkManagerPin(order.branch, req.body?.pin);
+        if (!chk.ok) return pinError(res, req.body?.pin);
+        order.cancelApprovedBy = chk.approver;
+      }
 
       order.isCancel = true;
       order.cancelType = req.body?.cancelType === "void" ? "void" : "cancel";
@@ -841,9 +863,15 @@ router.post("/:id/refund", async (req, res) => {
     if (order.paymentStatus !== "paid") {
       return res.status(400).json({ success: false, error: { message: "Возврат возможен только для оплаченного заказа" } });
     }
+    // Vozvrat — pul qaytariladi → HAR DOIM manager PIN (graceful: PIN sozlanmagan
+    // filialda talab qilinmaydi)
+    const chk = await checkManagerPin(order.branch, req.body?.pin);
+    if (!chk.ok) return pinError(res, req.body?.pin);
+
     order.paymentStatus = "refunded";
     order.refundedAt = new Date();
     order.refundedBy = req.userData.id || req.userData.userId || req.userData._id || null;
+    order.refundApprovedBy = chk.approver;
     order.refundReason = req.body?.reason || null;
     order.syncStatus = "pending";
     await order.save();

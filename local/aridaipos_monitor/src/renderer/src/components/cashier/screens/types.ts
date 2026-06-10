@@ -50,12 +50,12 @@ export interface ScreenCtx {
   // chetlab o'tadi (povorga check ketdi-yu, lekin Dashboard'da ko'rinmadi).
   onOrderCreated: (order: Order) => void;
   onShiftChanged: (shift: Shift | null) => void;
-  onChangeItemQty: (orderId: string, itemId: string, quantity: number) => Promise<void>;
+  onChangeItemQty: (orderId: string, itemId: string, quantity: number, pin?: string) => Promise<void>;
   // Позицию убрать из заказа (отмена блюда). Последнее блюдо удалить нельзя.
-  onCancelItem: (orderId: string, itemId: string, reason?: string) => Promise<void>;
+  onCancelItem: (orderId: string, itemId: string, reason?: string, pin?: string) => Promise<void>;
   // Отменить весь заказ (isCancel). Оплаченный нельзя.
-  onCancelOrder: (orderId: string, reason?: string) => Promise<void>;
+  onCancelOrder: (orderId: string, reason?: string, pin?: string) => Promise<void>;
   // Возврат оплаченного заказа (paymentStatus → refunded).
-  onRefund: (orderId: string, reason?: string) => Promise<void>;
+  onRefund: (orderId: string, reason?: string, pin?: string) => Promise<void>;
   onLogout: () => void;
 }
