@@ -98,6 +98,16 @@ export const api = {
   keshbekBalances: () => request("GET", "/keshbek/balances"),
   keshbekMovements: (phone) => request("GET", `/keshbek/movements/${encodeURIComponent(phone)}`),
 
+  // KELDI-KETTI — davomat + maosh (toggle o'chiq → 404 FEATURE_DISABLED)
+  staff: (branchId) => request("GET", `/users/all/${branchId}`),
+  kkAttendance: (q) => request("GET", `/keldi-ketti/attendance${q ? `?${q}` : ""}`),
+  kkManual: (userId, action) => request("POST", "/keldi-ketti/attendance/manual", { userId, action }),
+  kkRules: () => request("GET", "/keldi-ketti/salary-rules"),
+  kkRuleSave: (body) => request("POST", "/keldi-ketti/salary-rules", body),
+  kkPayroll: (period) => request("GET", `/keldi-ketti/payroll/${period}`),
+  kkPayrollCalc: (period) => request("POST", "/keldi-ketti/payroll/calculate", { period }),
+  kkPayrollPay: (id) => request("POST", `/keldi-ketti/payroll/${id}/pay`),
+
   // QR ORDER — kutayotgan so'rovlar + approve/reject + stol QR (toggle o'chiq → 404)
   qrPending: () => request("GET", "/qr-order/pending"),
   qrApprove: (id) => request("POST", `/qr-order/${id}/approve`),
