@@ -853,6 +853,18 @@ class ApiService {
   }
 
   /// Clear token + user from prefs and memory.
+  /// KELDI-KETTI — bugungi davomat ({} = belgilanmagan). Modul o'chiq bo'lsa
+  /// 404 FEATURE_DISABLED throw bo'ladi (karta o'zini yashiradi).
+  Future<Map<String, dynamic>> kkToday() => _getMap('/keldi-ketti/me/today');
+
+  /// "Я ПРИШЁЛ" — kechikish/shtraf serverda hisoblanadi.
+  Future<Map<String, dynamic>> kkCheckIn() =>
+      _writeJson('post', '/keldi-ketti/check-in', {});
+
+  /// "Я УШЁЛ".
+  Future<Map<String, dynamic>> kkCheckOut() =>
+      _writeJson('post', '/keldi-ketti/check-out', {});
+
   Future<void> logout() async {
     _token = null;
     _currentUser = null;

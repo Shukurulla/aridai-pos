@@ -5,6 +5,7 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/waiter_design.dart';
+import '../../widgets/attendance_card.dart';
 
 /// Read-only waiter profile + salary card + logout.
 class ProfileTab extends StatelessWidget {
@@ -65,6 +66,9 @@ class ProfileTab extends StatelessWidget {
                   ),
                 ),
               ),
+
+              // KELDI-KETTI — "Я ПРИШЁЛ / Я УШЁЛ" (modul yoqiq bo'lsagina)
+              const AttendanceCard(),
 
               // Dark user card
               _UserCard(
