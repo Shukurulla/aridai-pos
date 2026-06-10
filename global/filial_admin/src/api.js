@@ -93,6 +93,10 @@ export const api = {
   skladMovements: (limit = 50) => request("GET", `/sklad/movements?limit=${limit}`),
   skladThreshold: (ingredientId, lowAlertThreshold) =>
     request("PUT", `/sklad/stock/${ingredientId}/threshold`, { lowAlertThreshold }),
+
+  // KESHBEK — balanslar + harakatlar (toggle o'chiq → 404 FEATURE_DISABLED)
+  keshbekBalances: () => request("GET", "/keshbek/balances"),
+  keshbekMovements: (phone) => request("GET", `/keshbek/movements/${encodeURIComponent(phone)}`),
 };
 
 export function translateError(err) {

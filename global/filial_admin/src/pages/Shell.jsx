@@ -10,6 +10,7 @@ import Categories from "./Categories";
 import Foods from "./Foods";
 import Tables from "./Tables";
 import Sklad from "./Sklad";
+import Keshbek from "./Keshbek";
 
 const NAV = [
   { id: "orders", label: "Заказы", ic: "receipt" },
@@ -19,6 +20,7 @@ const NAV = [
   { id: "categories", label: "Категории", ic: "grid" },
   { id: "tables", label: "Столы и кабины", ic: "chair" },
   { id: "sklad", label: "Склад", ic: "box" },
+  { id: "keshbek", label: "Кешбэк", ic: "money" },
 ];
 const SOON = [
   { id: "safe", label: "Сейф", ic: "safe" },
@@ -104,6 +106,7 @@ export default function Shell() {
           {page === "categories" && <Categories />}
           {page === "tables" && <Tables />}
           {page === "sklad" && <Sklad />}
+          {page === "keshbek" && <Keshbek />}
         </div>
       </div>
     </div>
