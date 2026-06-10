@@ -82,6 +82,17 @@ export const api = {
   shifts: (branchId) => request("GET", `/shifts/all/${branchId}`),
   shiftCreate: (body) => request("POST", "/shifts/create", body),
   shiftClose: (id, body) => request("PUT", `/shifts/${id}/close`, body),
+
+  // SKLAD (inventory) — toggle o'chiq bo'lsa 404 FEATURE_DISABLED (err.code)
+  skladStock: () => request("GET", "/sklad/stock"),
+  skladIngredients: () => request("GET", "/sklad/ingredients"),
+  skladIngredientCreate: (body) => request("POST", "/sklad/ingredients", body),
+  skladIngredientUpdate: (id, body) => request("PUT", `/sklad/ingredients/${id}`, body),
+  skladStockIn: (body) => request("POST", "/sklad/stock/in", body),
+  skladAdjust: (body) => request("POST", "/sklad/stock/adjustment", body),
+  skladMovements: (limit = 50) => request("GET", `/sklad/movements?limit=${limit}`),
+  skladThreshold: (ingredientId, lowAlertThreshold) =>
+    request("PUT", `/sklad/stock/${ingredientId}/threshold`, { lowAlertThreshold }),
 };
 
 export function translateError(err) {

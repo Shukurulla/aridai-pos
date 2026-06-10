@@ -9,6 +9,7 @@ import Shifts from "./Shifts";
 import Categories from "./Categories";
 import Foods from "./Foods";
 import Tables from "./Tables";
+import Sklad from "./Sklad";
 
 const NAV = [
   { id: "orders", label: "Заказы", ic: "receipt" },
@@ -17,10 +18,10 @@ const NAV = [
   { id: "foods", label: "Меню (блюда)", ic: "dish" },
   { id: "categories", label: "Категории", ic: "grid" },
   { id: "tables", label: "Столы и кабины", ic: "chair" },
+  { id: "sklad", label: "Склад", ic: "box" },
 ];
 const SOON = [
   { id: "safe", label: "Сейф", ic: "safe" },
-  { id: "warehouse", label: "Склад", ic: "box" },
 ];
 
 const ROLE_RU = { branch_admin: "Администратор филиала", admin: "Администратор", owner: "Владелец" };
@@ -102,6 +103,7 @@ export default function Shell() {
           {page === "foods" && <Foods onBranchName={setBranchName} />}
           {page === "categories" && <Categories />}
           {page === "tables" && <Tables />}
+          {page === "sklad" && <Sklad />}
         </div>
       </div>
     </div>

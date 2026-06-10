@@ -5,7 +5,16 @@ import { useModal } from "../modal";
 import { Icon } from "../icons";
 
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU");
-const empty = { name: "", category: "", price: "", isHourly: false, description: "" };
+// Retsept qatorlarini tozalash: ingredient tanlangan + miqdor > 0 bo'lganlar
+const cleanRecipe = (rows, ings) =>
+  (rows || [])
+    .filter((r) => r.ingredientId && Number(r.quantity) > 0)
+    .map((r) => ({
+      ingredientId: r.ingredientId,
+      quantity: Number(r.quantity),
+      unit: ings.find((i) => String(i._id) === String(r.ingredientId))?.unit || r.unit || "dona",
+    }));
+const empty = { name: "", category: "", price: "", isHourly: false, description: "", recipe: [] };
 
 export default function Foods({ onBranchName }) {
   const { branchId, restaurantId } = useAuth();
@@ -18,6 +27,9 @@ export default function Foods({ onBranchName }) {
   const [imagePreview, setImagePreview] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // SKLAD retsept (BOM) — toggle yoqiq bo'lsa ingredientlar yuklanadi, aks holda
+  // bo'sh ro'yxat (retsept bo'limi ko'rinmaydi).
+  const [ingredients, setIngredients] = useState([]);
   const fileRef = useRef(null);
   const imgInputRef = useRef(null);
 
@@ -38,6 +50,12 @@ export default function Foods({ onBranchName }) {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    api
+      .skladIngredients()
+      .then((r) => setIngredients(r.data || []))
+      .catch(() => setIngredients([])); // FEATURE_DISABLED — retsept bo'limi yashirin
+  }, []);
 
   const catName = (c) => (typeof c === "object" ? c?.title : cats.find((x) => x._id === c)?.title) || "—";
 
@@ -62,6 +80,13 @@ export default function Foods({ onBranchName }) {
         price: String(f.price ?? ""),
         isHourly: f.isHourly === true,
         description: f.description || "",
+        recipe: Array.isArray(f.recipe)
+          ? f.recipe.map((r) => ({
+              ingredientId: String(r.ingredientId?._id || r.ingredientId || ""),
+              quantity: String(r.quantity ?? ""),
+              unit: r.unit || "",
+            }))
+          : [],
       },
     });
   };
@@ -94,6 +119,7 @@ export default function Foods({ onBranchName }) {
         body.append("branch", branchId);
         body.append("restaurantId", restaurantId);
         body.append("image", imageFile);
+        if (ingredients.length) body.append("recipe", JSON.stringify(cleanRecipe(f.recipe, ingredients)));
       } else {
         body = {
           name: f.name.trim(),
@@ -104,6 +130,7 @@ export default function Foods({ onBranchName }) {
           branch: branchId,
           restaurantId,
         };
+        if (ingredients.length) body.recipe = cleanRecipe(f.recipe, ingredients);
       }
       if (modal.id) await api.foodUpdate(modal.id, body);
       else await api.foodCreate(body);
@@ -297,6 +324,61 @@ export default function Foods({ onBranchName }) {
               <textarea className="input" value={modal.form.description}
                 onChange={(e) => setF("description", e.target.value)} placeholder="" />
             </div>
+            {ingredients.length > 0 && (
+              <div className="field">
+                <label>
+                  Рецепт (расход со склада на 1 порцию){" "}
+                  <span className="hint">— при заказе списывается автоматически</span>
+                </label>
+                {(modal.form.recipe || []).map((r, i) => (
+                  <div className="row" key={i} style={{ gap: 8, marginBottom: 6 }}>
+                    <select
+                      className="select"
+                      style={{ flex: 2 }}
+                      value={r.ingredientId}
+                      onChange={(e) => {
+                        const rows = [...modal.form.recipe];
+                        rows[i] = { ...rows[i], ingredientId: e.target.value };
+                        setF("recipe", rows);
+                      }}
+                    >
+                      <option value="">— ингредиент —</option>
+                      {ingredients.map((ing) => (
+                        <option key={ing._id} value={ing._id}>
+                          {ing.name} ({ing.unit})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      inputMode="decimal"
+                      placeholder="кол-во"
+                      value={r.quantity}
+                      onChange={(e) => {
+                        const rows = [...modal.form.recipe];
+                        rows[i] = { ...rows[i], quantity: e.target.value.replace(/[^\d.]/g, "") };
+                        setF("recipe", rows);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn ghost btn-sm"
+                      onClick={() => setF("recipe", modal.form.recipe.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="btn ghost btn-sm"
+                  onClick={() => setF("recipe", [...(modal.form.recipe || []), { ingredientId: "", quantity: "" }])}
+                >
+                  + Ингредиент
+                </button>
+              </div>
+            )}
             <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
               <button className="btn ghost" onClick={() => setModal(null)} disabled={busy}>Отмена</button>
               <button className="btn primary" onClick={save} disabled={busy}>{busy ? "…" : "Сохранить"}</button>
