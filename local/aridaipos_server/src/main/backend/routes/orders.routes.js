@@ -290,8 +290,23 @@ router.post("/merge", async (req, res) => {
     target.syncStatus = "pending";
     await target.save();
 
-    // Source orderlarni o'chiramiz (taomlari target'ga ko'chdi)
-    await orderModel.deleteMany({ _id: { $in: mergedOrderIds } });
+    // Source orderlarni HARD-DELETE QILMAYMIZ — o'chirish global'ga propagatsiya bo'lmaydi
+    // (sync faqat o'zgargan orderlarni push qiladi) → global'da qolib, tushum 2x sanaladi.
+    // Buning o'rniga: bekor (merge) belgilab syncStatus=pending → push global'ni ham tozalaydi.
+    const targetNo = parseInt(String(target.receiptNumber || "").split("-").pop(), 10) || 0;
+    await orderModel.updateMany(
+      { _id: { $in: mergedOrderIds } },
+      {
+        $set: {
+          isCancel: true,
+          cancelType: "cancel",
+          cancelReason: `Объединён с заказом №${targetNo}`,
+          cancelledBy: req.userData.id || req.userData.userId || req.userData._id || null,
+          cancelledAt: new Date(),
+          syncStatus: "pending",
+        },
+      },
+    );
 
     const tableDoc = target.table ? await tableModel.findById(target.table) : null;
     return res.json({
