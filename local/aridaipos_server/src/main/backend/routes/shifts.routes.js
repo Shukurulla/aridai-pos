@@ -3,6 +3,7 @@ import authMiddleware from "../middlewares/auth.middleware.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import usersModel from "../models/users.model.js";
+import { computeShiftTotals } from "../utils/shift-totals.js";
 
 // Kepket frontend kutgan shift (smena) endpointlari:
 //   GET  /api/shifts/active
@@ -94,17 +95,9 @@ router.post("/:id/close", async (req, res) => {
       });
     }
 
-    const paid = await orderModel.find({ shift: shift._id, paymentStatus: "paid", isCancel: { $ne: true } });
-    const t = { ordersCount: paid.length, revenue: 0, cashRevenue: 0, cardRevenue: 0, transferRevenue: 0, discountTotal: 0, serviceTotal: 0 };
-    for (const o of paid) {
-      t.revenue += o.totalPrice || 0;
-      t.discountTotal += o.discountAmount || 0;
-      t.serviceTotal += o.service?.amount || 0;
-      const m = o.paymentMethod;
-      if (m === "cash") t.cashRevenue += o.totalPrice;
-      else if (m === "card") t.cardRevenue += o.totalPrice;
-      else if (m === "transfer") t.transferRevenue += o.totalPrice;
-    }
+    // BARCHA to'lov turlari + mixed split + cashback — yagona hisob (global bilan bir xil)
+    const allOrders = await orderModel.find({ shift: shift._id });
+    const t = computeShiftTotals(allOrders);
     shift.totals = t;
     shift.isActive = false;
     shift.closedBy = req.userData._id;

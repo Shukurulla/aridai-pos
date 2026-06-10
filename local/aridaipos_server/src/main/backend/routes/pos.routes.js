@@ -11,6 +11,7 @@ import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import { calculateOrderTotals } from "../utils/order-calc.js";
+import { computeShiftTotals } from "../utils/shift-totals.js";
 import { audit } from "../utils/audit.js";
 
 // ============================================================
@@ -188,30 +189,8 @@ router.post("/shift/close", async (req, res) => {
     const shift = await getOpenShift(branch);
     if (!shift) return res.status(400).json({ status: "error", code: "NO_OPEN_SHIFT" });
 
-    const paidOrders = await orderModel.find({ shift: shift._id, isCancel: { $ne: true }, paymentStatus: "paid" });
-    const cancelledCount = await orderModel.countDocuments({ shift: shift._id, isCancel: true });
-
-    const totals = {
-      ordersCount: paidOrders.length,
-      revenue: 0, cashRevenue: 0, cardRevenue: 0, transferRevenue: 0, kaspiRevenue: 0,
-      cashbackUsed: 0, discountTotal: 0, serviceTotal: 0, cancelledOrders: cancelledCount,
-    };
-    for (const o of paidOrders) {
-      totals.revenue += o.totalPrice || 0;
-      totals.discountTotal += o.discountAmount || 0;
-      totals.serviceTotal += o.service?.amount || 0;
-      const m = o.paymentMethod;
-      if (m === "cash") totals.cashRevenue += o.totalPrice;
-      else if (m === "card") totals.cardRevenue += o.totalPrice;
-      else if (m === "transfer") totals.transferRevenue += o.totalPrice;
-      else if (m === "kaspi") totals.kaspiRevenue += o.totalPrice;
-      else if (m === "mixed") {
-        totals.cashRevenue += o.mixed?.cash || 0;
-        totals.cardRevenue += o.mixed?.card || 0;
-        totals.transferRevenue += o.mixed?.transfer || 0;
-        totals.kaspiRevenue += o.mixed?.kaspi || 0;
-      }
-    }
+    const allOrders = await orderModel.find({ shift: shift._id });
+    const totals = computeShiftTotals(allOrders);
 
     shift.totals = totals;
     shift.isActive = false;

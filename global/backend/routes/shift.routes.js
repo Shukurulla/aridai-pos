@@ -3,6 +3,7 @@ import authMiddleware from "../middlewares/auth.middleware.js";
 import branchesModel from "../models/branches.model.js";
 import shiftModel from "../models/shift.model.js";
 import orderModel from "../models/order.model.js";
+import { computeShiftTotals } from "../utils/shift-totals.js";
 
 const router = express.Router();
 
@@ -86,23 +87,8 @@ router.put("/:id/close", authMiddleware, async (req, res) => {
       orders = await orderModel.find({ shift: id }); // totals to'g'ri bo'lishi uchun qayta o'qiymiz
     }
 
-    const sum = (arr, f) => arr.reduce((s, o) => s + (f(o) || 0), 0);
-    const paid = orders.filter((o) => !o.isCancel && o.paymentStatus === "paid");
-    const direct = (m) => sum(paid.filter((o) => o.paymentMethod === m), (o) => o.totalPrice || 0);
-    const mixed = (field) => sum(paid.filter((o) => o.paymentMethod === "mixed"), (o) => o.mixed?.[field] || 0);
-
-    const totals = {
-      ordersCount: orders.filter((o) => !o.isCancel).length,
-      revenue: sum(paid, (o) => o.totalPrice || 0),
-      cashRevenue: direct("cash") + mixed("cash"),
-      cardRevenue: direct("card") + mixed("card"),
-      transferRevenue: direct("transfer") + mixed("transfer"),
-      kaspiRevenue: direct("kaspi") + mixed("kaspi"),
-      cashbackUsed: sum(paid, (o) => o.cashback?.spent || 0),
-      discountTotal: sum(paid, (o) => o.discountAmount || 0),
-      serviceTotal: sum(paid, (o) => o.service?.amount || 0),
-      cancelledOrders: orders.filter((o) => o.isCancel).length,
-    };
+    // Yagona hisob (global + local bir xil) — barcha to'lov turlari + mixed + cashback
+    const totals = computeShiftTotals(orders);
 
     shift.isActive = false;
     shift.closedBy = req.userData._id;
