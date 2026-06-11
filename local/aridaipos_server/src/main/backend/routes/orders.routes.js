@@ -366,6 +366,98 @@ async function loadOrders(branch, shiftId) {
 // Frontend Заказы ro'yxati SHU endpointni chaqiradi: GET /api/orders/today?shiftId=
 // MUHIM: bu route GET /:id dan OLDIN turishi SHART — aks holda Express uni
 // /:id (id='today') deb ushlab, CastError beradi va ro'yxat BO'SH chiqadi.
+// ===== Bekor qilinganlar (POS "Отчёты" → Отказы) — kepket CancelledItemsResponse =====
+// MUHIM: /:id route'idan OLDIN turishi shart (aks holda "cancelled-items" id deb o'qiladi).
+router.get("/cancelled-items", async (req, res) => {
+  try {
+    const branch = req.userData.branch;
+    const { shiftId } = req.query;
+    const filter = { branch };
+    if (shiftId) filter.shift = shiftId;
+    else {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      filter.createdAt = { $gte: d };
+    }
+    const orders = await orderModel.find(filter);
+    const userIds = new Set();
+    for (const o of orders) {
+      if (o.cancelledBy) userIds.add(String(o.cancelledBy));
+      for (const f of o.foods || []) for (const c of f.cancels || []) if (c.changedBy) userIds.add(String(c.changedBy));
+    }
+    const users = userIds.size ? await usersModel.find({ _id: { $in: [...userIds] } }).select("name") : [];
+    const nameOf = new Map(users.map((u) => [String(u._id), u.name]));
+
+    const items = [];
+    for (const o of orders) {
+      const base = {
+        orderId: String(o._id),
+        orderNumber: parseInt(String(o.receiptNumber || "").split("-").pop(), 10) || 0,
+        tableName: o.orderType === "takeaway" ? "Собой" : "",
+        waiterName: o.waiter?.name || "",
+      };
+      if (o.isCancel) {
+        // Butun order bekor — har aktiv (bekordan oldingi) taom qatori
+        for (const f of o.foods || []) {
+          const q = effQty(f);
+          if (q <= 0) continue;
+          items.push({
+            ...base,
+            type: "order_cancelled",
+            foodName: f.foodName,
+            quantity: q,
+            price: f.foodPrice || 0,
+            total: f.isHourly ? f.hourlyFinalAmount || 0 : (f.foodPrice || 0) * q,
+            cancelledAt: o.cancelledAt || o.updatedAt,
+            cancelledBy: nameOf.get(String(o.cancelledBy)) || "",
+            reason: o.cancelReason || "",
+          });
+        }
+      } else {
+        // Item darajasidagi dec-bekorlar
+        for (const f of o.foods || []) {
+          for (const c of f.cancels || []) {
+            if (c.status !== "dec") continue;
+            items.push({
+              ...base,
+              type: "item_cancelled",
+              foodName: f.foodName,
+              quantity: c.changeVal,
+              price: f.foodPrice || 0,
+              total: (f.foodPrice || 0) * c.changeVal,
+              cancelledAt: c.changedAt,
+              cancelledBy: nameOf.get(String(c.changedBy)) || "",
+              reason: c.changeReason || "",
+            });
+          }
+        }
+      }
+    }
+    items.sort((a, b) => new Date(b.cancelledAt) - new Date(a.cancelledAt));
+    // Stol nomlarini to'ldirish (bitta so'rov)
+    const tIds = [...new Set(orders.filter((o) => o.table).map((o) => String(o.table)))];
+    const tables = tIds.length ? await tableModel.find({ _id: { $in: tIds } }).select("title number") : [];
+    const tName = new Map(tables.map((t) => [String(t._id), t.title || `Стол ${t.number}`]));
+    const byOrder = new Map(orders.map((o) => [String(o._id), o]));
+    for (const it of items) {
+      if (!it.tableName) {
+        const o = byOrder.get(it.orderId);
+        it.tableName = (o?.table && tName.get(String(o.table))) || it.tableName || "";
+      }
+    }
+    return res.json({
+      success: true,
+      data: {
+        items,
+        totalCancelledItems: items.reduce((s, i) => s + i.quantity, 0),
+        totalCancelledValue: items.reduce((s, i) => s + i.total, 0),
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: { message: e.message } });
+  }
+});
+
 router.get("/today", async (req, res) => {
   try {
     const orders = await loadOrders(req.userData.branch, req.query.shiftId);

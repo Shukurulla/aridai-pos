@@ -204,3 +204,43 @@ export function buildTestReceiptHtml(ctx = {}) {
     footer: "ТЕСТ ПЕЧАТИ · Спасибо!",
   });
 }
+
+// ===== HISOBOT cheki (POS "Отчёты" → printer) — umumiy 72mm shablon =====
+// sections: [{ title?, rows: [{label, value, bold?, indent?}], subtotal?, subtotalLabel? }]
+export function buildReportHtml({ header = {}, sections = [], grandTotal, grandLabel = "ИТОГО", currency = "" } = {}) {
+  const sep = `<div style="border-top:2px dotted #000;margin:8px 0;"></div>`;
+  const cur = currency || "";
+  const money = (n) => `${fmt(n)}${cur ? " " + cur : ""}`;
+
+  const rowHtml = (r) =>
+    `<div style="display:flex;align-items:flex-end;margin:3px 0;${r.bold ? "font-weight:900;" : ""}${r.indent ? "padding-left:10px;" : ""}">
+      <span style="white-space:normal;word-break:break-word;max-width:70%;">${esc(r.label)}</span>
+      <span style="flex:1 1 auto;border-bottom:1px dotted #000;margin:0 6px 3px;min-width:10px;"></span>
+      <span style="white-space:nowrap;font-weight:800;">${esc(r.value)}</span>
+    </div>`;
+
+  const secHtml = (sec) => {
+    const title = sec.title
+      ? `<div style="font-weight:900;font-size:13px;letter-spacing:.4px;margin:8px 0 4px;text-transform:uppercase;">${esc(sec.title)}</div>`
+      : "";
+    const rows = (sec.rows || []).map(rowHtml).join("");
+    const sub =
+      sec.subtotal != null
+        ? rowHtml({ label: sec.subtotalLabel || "Итого", value: money(sec.subtotal), bold: true })
+        : "";
+    return title + rows + sub;
+  };
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    *{box-sizing:border-box;}
+    body{width:72mm;margin:0;padding:8px 10px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12px;line-height:1.35;}
+  </style></head><body>
+    <div style="text-align:center;font-weight:900;font-size:18px;letter-spacing:1px;">${esc(header.restaurantName || "")}</div>
+    <div style="text-align:center;font-weight:800;font-size:14px;margin-top:2px;">${esc(header.title || "Отчёт")}</div>
+    <div style="text-align:center;font-size:11px;color:#000;">${esc(header.date || new Date().toLocaleString("ru-RU"))}</div>
+    ${sep}
+    ${sections.map(secHtml).join(sep)}
+    ${grandTotal != null ? sep + rowHtml({ label: grandLabel, value: money(grandTotal), bold: true }) : ""}
+    ${sep}
+  </body></html>`;
+}

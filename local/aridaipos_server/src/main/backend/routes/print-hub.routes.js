@@ -4,7 +4,7 @@ import printerLoginModel from "../models/printer_login.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import localConfigModel from "../models/local_config.model.js";
 import orderModel from "../models/order.model.js";
-import { buildReceiptHtml, buildTestReceiptHtml } from "../../receipt-template.js";
+import { buildReceiptHtml, buildTestReceiptHtml, buildReportHtml } from "../../receipt-template.js";
 import { printViaHook } from "../print-hook.js";
 import QRCode from "qrcode";
 import { cashbackQrSessionModel } from "../models/keshbek.model.js";
@@ -164,14 +164,164 @@ router.post("/print/test", async (req, res) => {
   }
 });
 
-// ===== Kuxnya / hisobot cheklari — keyingi bosqich (hozircha no-op, xato bermaydi) =====
-const soon = (req, res) => res.json({ success: true, skipped: true, note: "в разработке" });
-router.post("/print/by-kitchen", soon);
-router.post("/print/sold-foods", soon);
-router.post("/print/revenue", soon);
-router.post("/print/cancelled", soon);
-router.post("/print/waiters", soon);
-router.post("/print/act-real", soon);
-router.post("/print/raw", soon);
+// ===== HISOBOT cheklari (POS "Отчёты") — buildReportHtml orqali real chop =====
+// POS payload tuzadi (printer.ts strukturasi), server faqat render + print.
+async function printReport(req, res, mapToSections) {
+  try {
+    const b = req.body || {};
+    const device = await resolveDevice(b.printerName);
+    if (!device) return res.json({ success: false, error: "Принтер не настроен." });
+    const { sections, grandTotal, grandLabel } = mapToSections(b);
+    const html = buildReportHtml({
+      header: b.header || {},
+      currency: b.currency || "",
+      sections,
+      grandTotal,
+      grandLabel,
+    });
+    return res.json(await printViaHook(html, device));
+  } catch (e) {
+    return res.json({ success: false, error: e.message });
+  }
+}
+
+const moneyRow = (label, n, cur, opts = {}) => ({ label, value: `${Number(n || 0).toLocaleString("ru-RU")}${cur ? " " + cur : ""}`, ...opts });
+
+// Sotilgan taomlar (kategoriya bo'yicha)
+router.post("/print/sold-foods", (req, res) =>
+  printReport(req, res, (b) => ({
+    sections: (b.categories || []).map((c) => ({
+      title: c.name,
+      rows: (c.items || []).map((i) => moneyRow(`${i.name} × ${i.qty}`, i.total, b.currency)),
+      subtotal: c.subtotal,
+    })),
+    grandTotal: b.grandTotal,
+  })),
+);
+
+// Kuxnyalar bo'yicha
+router.post("/print/by-kitchen", (req, res) =>
+  printReport(req, res, (b) => ({
+    sections: (b.kitchens || []).map((k) => ({
+      title: k.name,
+      rows: (k.items || []).map((i) => moneyRow(`${i.name} × ${i.qty}`, i.total, b.currency)),
+      subtotal: k.subtotal,
+    })),
+    grandTotal: b.grandTotal,
+  })),
+);
+
+// Tushum (sections: rows amount+count yoki value)
+router.post("/print/revenue", (req, res) =>
+  printReport(req, res, (b) => ({
+    sections: (b.sections || []).map((sec) => ({
+      title: sec.title,
+      rows: (sec.rows || []).map((r) =>
+        r.value !== undefined
+          ? { label: r.label, value: String(r.value) }
+          : moneyRow(r.count != null ? `${r.label} (${r.count})` : r.label, r.amount, b.currency),
+      ),
+      subtotal: sec.subtotal,
+    })),
+    grandTotal: b.grandTotal,
+  })),
+);
+
+// Otkazlar (bekor qilinganlar)
+router.post("/print/cancelled", (req, res) =>
+  printReport(req, res, (b) => ({
+    sections: [
+      {
+        rows: (b.items || []).flatMap((i) => {
+          const rows = [moneyRow(`${i.time} ${i.tableName} · ${i.foodName} × ${i.qty}`, i.total, b.currency)];
+          const meta = [i.cancelledBy, i.reason].filter(Boolean).join(" — ");
+          if (meta) rows.push({ label: meta, value: "", indent: true });
+          return rows;
+        }),
+      },
+      { rows: [{ label: "Позиций отменено", value: String(b.totalCount || 0), bold: true }] },
+    ],
+    grandTotal: b.grandTotal,
+    grandLabel: "СУММА ОТКАЗОВ",
+  })),
+);
+
+// Ofitsiantlar
+router.post("/print/waiters", (req, res) =>
+  printReport(req, res, (b) => ({
+    sections: [
+      {
+        rows: (b.waiters || []).flatMap((w) => {
+          const rows = [moneyRow(`${w.name} (${w.ordersCount})`, w.totalRevenue, b.currency, { bold: true })];
+          if (w.averageCheck != null) rows.push(moneyRow("средний чек", w.averageCheck, b.currency, { indent: true }));
+          return rows;
+        }),
+      },
+    ],
+    grandTotal: b.grandTotal,
+  })),
+);
+
+// Akt sverki (act-real) — eng to'liq smena akti
+router.post("/print/act-real", (req, res) =>
+  printReport(req, res, (b) => {
+    const cur = b.currency;
+    const sections = [];
+    if (b.shift?.from || b.shift?.to) {
+      sections.push({ rows: [{ label: "Смена", value: `${b.shift.from || ""} — ${b.shift.to || ""}` }] });
+    }
+    if ((b.items || []).length) {
+      sections.push({
+        title: "Блюда",
+        rows: b.items.map((i) => moneyRow(`${i.name} × ${i.qty}`, i.sum, cur)),
+        subtotal: b.totals?.sum,
+        subtotalLabel: `Итого (${b.totals?.qty || 0} шт)`,
+      });
+    }
+    if (b.summary) {
+      const sm = b.summary;
+      sections.push({
+        title: "Сводка",
+        rows: [
+          { label: "Чеков", value: String(sm.totalChecks || 0) },
+          { label: "Позиций", value: String(sm.orderPositions || 0) },
+          { label: "Отказы (чеков)", value: String(sm.refusalChecks || 0) },
+          moneyRow("Сумма отказов", sm.refusalSum, cur),
+          { label: "Гостей", value: String(sm.guests || 0) },
+        ],
+      });
+    }
+    if ((b.payments || []).length) {
+      sections.push({
+        title: "Оплаты",
+        rows: b.payments.map((pp) => moneyRow(pp.name, pp.sum, cur)),
+        subtotal: b.paymentsTotal,
+      });
+    }
+    if ((b.staff || []).length) {
+      sections.push({
+        title: "Официанты",
+        rows: b.staff.map((st) => moneyRow(`${st.name} (${st.count})`, st.sum, cur)),
+      });
+    }
+    if ((b.subdivisions || []).length) {
+      sections.push({
+        title: "Подразделения",
+        rows: b.subdivisions.map((sd) => moneyRow(`${sd.name} (${sd.count})`, sd.sum, cur)),
+        subtotal: b.subTotal?.sum,
+      });
+    }
+    if ((b.clients || []).length) {
+      sections.push({
+        title: "Клиенты",
+        rows: b.clients.map((c) => moneyRow(`${c.name} (${c.checks})`, c.sum, cur)),
+      });
+    }
+    return { sections, grandTotal: b.paymentsTotal ?? b.totals?.sum, grandLabel: "ИТОГО ПО СМЕНЕ" };
+  }),
+);
+
+// Raw matn — kerak bo'lmadi (POS strukturali endpointlardan foydalanadi)
+router.post("/print/raw", (req, res) => res.json({ success: true, skipped: true, note: "не используется" }));
 
 export default router;

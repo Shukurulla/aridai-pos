@@ -17,6 +17,7 @@ import restaurantRouter from "./routes/restaurant.routes.js";
 import { expensesRouter, advancesRouter, expenseCategoriesRouter } from "./routes/finance.routes.js";
 import printHubRouter from "./routes/print-hub.routes.js";
 import keshbekRouter from "./routes/keshbek.routes.js";
+import hisobotRouter from "./routes/hisobot.routes.js";
 import localConfigModel from "./models/local_config.model.js";
 import { startSyncLoop, stopSyncLoop } from "./sync/sync-client.js";
 
@@ -63,6 +64,7 @@ export async function startLocalBackend() {
   app.use("/api/reports", reportsRouter);
   app.use("/api/restaurant", restaurantRouter);
   app.use("/api/keshbek", keshbekRouter); // KESHBEK — spend/balance global proxy (offline → 503)
+  app.use("/api/hisobot", hisobotRouter); // To'liq hisobot (POS Отчёты) — lokal, offline ham
   app.use("/api/expenses", expensesRouter);
   app.use("/api/advances", advancesRouter);
   app.use("/api/expense-categories", expenseCategoriesRouter);
