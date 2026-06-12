@@ -2,7 +2,16 @@ name: Release mobile APK
 
 # aridai-pos-app o'zgarsa (main'ga push) → APK quriladi va GitHub Release (app-vX.Y.Z) chiqadi.
 # Ilovadagi UpdateService shu release'ni ko'radi → yangilanish bildiradi.
-# Yangi versiya uchun: aridai-pos-app/pubspec.yaml dagi `version:` ni oshiring.
+# Yangi versiya uchun: aridai-pos-app/pubspec.yaml dagi `version:` ni oshiring
+# VA lib/services/update_service.dart dagi `currentVersion` ni o'sha qiymatga tenglang.
+#
+# IMZO (signing): DOIMIY release kaliti GitHub Secretlardan keladi. 4 ta secret kerak:
+#   ANDROID_KEYSTORE_BASE64   — keystore .jks ning base64'i
+#   ANDROID_KEYSTORE_PASSWORD — store paroli
+#   ANDROID_KEY_ALIAS         — kalit aliasi (aridai)
+#   ANDROID_KEY_PASSWORD      — kalit paroli
+# Secret yo'q bo'lsa workflow XATO bilan to'xtaydi (debug-imzoli release CHIQMAYDI —
+# aks holda o'rnatilgan app yangilanmaydi: "App not installed").
 on:
   push:
     branches: [main]
@@ -31,6 +40,26 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Imzo kalitini tayyorlash (GitHub Secretlardan)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret yo'q. Release imzolanmadi. Settings → Secrets and variables → Actions ga 4 ta secret qo'shing (README'da)."
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > aridai-pos-app/android/app/release.jks
+          cat > aridai-pos-app/android/key.properties <<EOF
+          storePassword=$KS_PW
+          keyPassword=$KEY_PW
+          keyAlias=$KEY_ALIAS
+          storeFile=app/release.jks
+          EOF
+          echo "✓ Release kaliti tayyor (imzo doimiy)"
+
       - name: Android litsenziyalarini qabul qilish (NDK auto-install uchun)
         run: yes | flutter doctor --android-licenses || true
 
@@ -38,7 +67,7 @@ jobs:
         id: ver
         run: echo "v=$(grep -m1 '^version:' aridai-pos-app/pubspec.yaml | sed 's/version:[[:space:]]*//; s/+.*//')" >> "$GITHUB_OUTPUT"
 
-      - name: APK qurish
+      - name: APK qurish (release kalit bilan imzolangan)
         working-directory: aridai-pos-app
         run: |
           flutter pub get

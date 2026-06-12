@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Keystore base64 (CI secret uchun — HECH QACHON commit qilinmasin)
+android/KEYSTORE_BASE64.txt
+KEYSTORE_BASE64.txt

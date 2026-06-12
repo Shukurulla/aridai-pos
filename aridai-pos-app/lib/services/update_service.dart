@@ -14,7 +14,9 @@ class UpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.0';
+  // MUHIM: pubspec.yaml `version:` bilan BIR XIL bo'lsin (release tegi shundan).
+  // Aks holda yangilangach app o'zini eski deb biladi → update loop.
+  static const String currentVersion = '1.9.1';
   static const String _repo = 'Shukurulla/aridai-pos'; // owner/repo
   static const String _tagPrefix = 'app-v';
 
