@@ -1043,7 +1043,7 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
                       {grandTotal - (split.cashback || 0) > 0 && (
                         <div style={{ borderTop: `2px dashed ${T.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div style={{ fontSize: 13, fontWeight: 800, color: T.textMuted }}>
-                            Остаток {fmt(grandTotal - (split.cashback || 0))} — чем доплатить?
+                            Доплата {fmt(grandTotal - (split.cashback || 0))} — чем?
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
                             {([
@@ -1095,23 +1095,61 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
 
           {splitMode && <div style={{ flex: 1 }} />}
 
-          {splitMode && (
-            <div
-              style={{
-                background: Math.abs(splitRemaining) < 100 ? T.readyBg : T.cancelledBg,
-                color: Math.abs(splitRemaining) < 100 ? T.ready : T.cancelled,
-                padding: '12px 18px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                fontSize: 20,
-                fontWeight: 800,
-              }}
-            >
-              <span>Остаток</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 26 }}>{fmt(splitRemaining)}</span>
-            </div>
-          )}
+          {/* КЕШБЭК — to'liq breakdown (Кешбэк + usul = Итого) chalkashlik bo'lmasin.
+              Oddiy СМЕШАННАЯ — qisqa "Остаток". */}
+          {splitMode &&
+            (payType === 'cashback' && kbBalance != null ? (
+              <div style={{ background: T.panel, border: `2px solid ${T.borderStrong}`, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {(split.cashback || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 }}>
+                    <span style={{ color: '#7c3aed' }}>Кешбэк</span>
+                    <span style={{ color: '#7c3aed', fontVariantNumeric: 'tabular-nums' }}>{fmt(split.cashback || 0)}</span>
+                  </div>
+                )}
+                {(['cash', 'card', 'click'] as const).map((k) =>
+                  split[k] > 0 ? (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
+                      <span>{k === 'cash' ? 'Наличные' : k === 'card' ? 'Карта' : 'Перевод'}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(split[k])}</span>
+                    </div>
+                  ) : null,
+                )}
+                <div
+                  style={{
+                    borderTop: `2px dashed ${T.border}`,
+                    marginTop: 4,
+                    paddingTop: 6,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    fontSize: 18,
+                    fontWeight: 900,
+                    color: Math.abs(splitRemaining) < 100 ? T.ready : T.cancelled,
+                  }}
+                >
+                  <span>{Math.abs(splitRemaining) < 100 ? '✓ Итого' : splitRemaining > 0 ? 'Не хватает' : 'Лишних'}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {Math.abs(splitRemaining) < 100 ? fmt(grandTotal) : fmt(Math.abs(splitRemaining))}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: Math.abs(splitRemaining) < 100 ? T.readyBg : T.cancelledBg,
+                  color: Math.abs(splitRemaining) < 100 ? T.ready : T.cancelled,
+                  padding: '12px 18px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  fontSize: 20,
+                  fontWeight: 800,
+                }}
+              >
+                <span>Остаток</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 26 }}>{fmt(splitRemaining)}</span>
+              </div>
+            ))}
 
           <CTA height={76} fontSize={22} onClick={confirm} disabled={!isValid || busy}>
             <NavIcon kind="check" color="#fff" /> {busy ? 'ОБРАБОТКА…' : 'ПОДТВЕРДИТЬ ОПЛАТУ'}
