@@ -72,7 +72,9 @@ export interface PartialPaymentResult {
   unpaidTotal: number;
 }
 
-export type PaymentType = 'cash' | 'card' | 'click' | 'mixed';
+// 'cashback' — UI'dagi alohida usul (balansdan to'lash). Backend'ga 'mixed' bo'lib
+// boradi (split.cashback + qolgani naqd/karta/perevod).
+export type PaymentType = 'cash' | 'card' | 'click' | 'mixed' | 'cashback';
 
 export interface PaymentSplit {
   cash: number;

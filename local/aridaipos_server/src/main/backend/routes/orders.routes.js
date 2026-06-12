@@ -786,6 +786,7 @@ router.post("/:id/pay", async (req, res) => {
     // TO'LIQ SUMMA VALIDATSIYA — mixed (aralash) uchun split = qolgan summa bo'lishi
     // shart. KESHBEK qismi (s.cashback) ham yig'indiga kiradi — POS uni spend
     // tasdiqlangach yuboradi (balans GLOBAL'da allaqachon kamaytirilgan).
+    let cashbackSpent = 0; // spend bo'lgan keshbek (save uzilsa kompensatsiya uchun)
     if (paymentType === "mixed") {
       const s = paymentSplit || {};
       // Komponentlar MANFIY bo'lishi mumkin emas (manfiy cash bilan keshbek drenaji blok)
@@ -831,6 +832,7 @@ router.post("/:id/pay", async (req, res) => {
           spent: cb,
           clientPhone: cbPhone,
         };
+        cashbackSpent = cb;
       }
     }
 
@@ -854,8 +856,8 @@ router.post("/:id/pay", async (req, res) => {
         method: toLocalPayMethod(paymentType),
         mixed:
           paymentType === "mixed"
-            ? { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0 }
-            : { cash: 0, card: 0, transfer: 0 },
+            ? { cash: Number(s.cash) || 0, card: Number(s.card) || 0, transfer: Number(s.click) || 0, cashback: Number(s.cashback) || 0 }
+            : { cash: 0, card: 0, transfer: 0, cashback: 0 },
         itemIds: [],
         comment: null,
         paidAt: paidNow,
@@ -870,7 +872,21 @@ router.post("/:id/pay", async (req, res) => {
     order.paidAt = paidNow;
     order.paidBy = payerId;
     order.syncStatus = "pending";
-    await order.save();
+    // KESHBEK xavfsizligi: spend GLOBAL'da allaqachon bo'ldi. Agar save shu yerda
+    // uzilsa, balans drenaj bo'lib order yo'qoladi (review MEDIUM). Save uzilsa
+    // spend'ni QAYTARAMIZ (refundViaGlobal idempotent), keyin xatoni uzatamiz.
+    try {
+      await order.save();
+    } catch (saveErr) {
+      if (cashbackSpent > 0) {
+        try {
+          await refundViaGlobal(order._id);
+        } catch {
+          /* reconcile keyinroq — orphan spend movement refOrderId bo'yicha topiladi */
+        }
+      }
+      throw saveErr;
+    }
     createEarnSession(order); // KESHBEK earn QR sessiya (toggle yoqiq bo'lsa) — fire-and-forget
 
     // Chek POS tomonidan chop etiladi (PrinterAPI.printPayment → POST /print/payment).
@@ -902,6 +918,7 @@ function finalizePayments(order) {
       agg.cash += p.mixed?.cash || 0;
       agg.card += p.mixed?.card || 0;
       agg.transfer += p.mixed?.transfer || 0;
+      agg.cashback += p.mixed?.cashback || 0;
     } else if (agg[p.method] !== undefined) {
       agg[p.method] += p.amount || 0;
     }

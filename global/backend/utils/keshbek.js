@@ -90,7 +90,14 @@ export async function capturePhone(token, rawPhone) {
     return { error: "EXPIRED" };
   }
 
-  const { config } = await keshbekConfig(session.restaurantId);
+  // Toggle O'CHIQ (capture paytida) — earn YO'Q. Sessiyani PENDING'ga qaytaramiz
+  // (re-enable bo'lsa keyin yig'ilsin). Bu YAGONA gate — web POST ham, WhatsApp
+  // webhook ham shu yerdan o'tadi ("OFF => earn yo'q" har bir kanalda kafolat).
+  const { enabled, config } = await keshbekConfig(session.restaurantId);
+  if (!enabled) {
+    await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { status: "pending", capturedPhone: null, capturedAt: null } });
+    return { error: "FEATURE_DISABLED" };
+  }
   const bal = await cashbackBalanceModel.findOneAndUpdate(
     { restaurantId: session.restaurantId, clientPhone: phone },
     {

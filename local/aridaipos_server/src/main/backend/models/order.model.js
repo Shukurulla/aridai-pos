@@ -172,6 +172,7 @@ const orderSchema = new mongoose.Schema(
           cash: { type: Number, default: 0 },
           card: { type: Number, default: 0 },
           transfer: { type: Number, default: 0 },
+          cashback: { type: Number, default: 0 }, // keshbek qismi (yakuniy mixed agregati uchun)
         },
         itemIds: [{ type: String }], // foods[]._id (shu sessiyada to'langanlar)
         comment: { type: String, default: null },

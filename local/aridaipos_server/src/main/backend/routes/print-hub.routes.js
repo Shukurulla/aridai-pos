@@ -112,9 +112,13 @@ router.post("/print/payment", async (req, res) => {
       try {
         const sess = await cashbackQrSessionModel.findOne({ orderId: b.orderId });
         if (sess && sess.status === "pending" && sess.expiresAt > new Date()) {
-          const { config: kcfg } = await keshbekConfig(sess.restaurantId);
-          const dataUrl = await QRCode.toDataURL(qrText(sess, kcfg), { margin: 1, width: 240 });
-          cashbackQr = { dataUrl, earnAmount: sess.earnAmount };
+          // Toggle YOQIQ bo'lsagina QR. O'chirilsa (eski pending sessiya qolsa ham)
+          // chekda QR chiqmaydi (foydalanuvchi talabi). enabled — local mirror'dan.
+          const { enabled, config: kcfg } = await keshbekConfig(sess.restaurantId);
+          if (enabled) {
+            const dataUrl = await QRCode.toDataURL(qrText(sess, kcfg), { margin: 1, width: 240 });
+            cashbackQr = { dataUrl, earnAmount: sess.earnAmount };
+          }
         }
       } catch (qe) {
         console.warn("[keshbek] chek QR xato:", qe?.message);

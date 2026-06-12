@@ -49,12 +49,15 @@ receiptPageRouter.get("/:orderId/:sig", async (req, res) => {
     const items = (order.foods || []).filter((f) => effQty(f) > 0);
     const isPossiz = order.createdInMode === "possiz" || order.source === "possiz_mobile";
 
-    // Keshbek QR (pending sessiya bo'lsa)
+    // Keshbek QR — FAQAT toggle YOQIQ + pending sessiya bo'lsa. Toggle o'chirilsa
+    // (eski pending sessiya qolsa ham) QR chiqmaydi (foydalanuvchi talabi).
     let kbBlock = "";
     try {
-      const sess = await cashbackQrSessionModel.findOne({ orderId: order._id, status: "pending", expiresAt: { $gt: new Date() } });
+      const { enabled, config: kc } = await keshbekConfig(order.restaurantId);
+      const sess = enabled
+        ? await cashbackQrSessionModel.findOne({ orderId: order._id, status: "pending", expiresAt: { $gt: new Date() } })
+        : null;
       if (sess) {
-        const { config: kc } = await keshbekConfig(order.restaurantId);
         const num = String(kc?.whatsappNumber || "").replace(/[^\d]/g, "");
         const link = num
           ? `https://wa.me/${num}?text=${sess.qrToken}`

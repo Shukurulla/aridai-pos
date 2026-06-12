@@ -34,7 +34,8 @@ const app = express();
 
 app.set("trust proxy", 1); // nginx orqasida — req.ip to'g'ri bo'lishi uchun
 app.use(cors());
-app.use(express.json());
+// rawBody — webhook imzo tekshiruvi uchun (WhatsApp X-Hub-Signature-256 HMAC).
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(mongoSanitize); // NoSQL injection oldini olish
 
 app.use("/uploads", express.static(config.uploadsDir));
