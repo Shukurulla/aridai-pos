@@ -2,7 +2,7 @@
 tags: [tool]
 created: 2026-05-28
 toolKey: keshbek
-status: ✅ core implemented (2026-06-10)
+status: ✅ implemented + web capture (2026-06-12)
 default: OFF
 ---
 
@@ -11,7 +11,10 @@ default: OFF
 ## Meta
 
 - **Key:** `keshbek`
-- **Status:** ✅ core implemented (2026-06-10) — earn QR (chek, deferred) + spend online (POS СМЕШАННАЯ) + admin balanslar. Qoldi: WhatsApp bot integratsiyasi (webhook stub), SMS, expire scheduler
+- **Status:** ✅ implemented (2026-06-12) — earn QR (chek, deferred) + **mijoz web capture sahifasi** (QR → telefon so'rash, JSON emas) + spend online (POS **alohida КЕШБЭК tugma**, gibrid) + admin balanslar + **toggle gate** (OFF → QR yo'q) + **WhatsApp webhook parser** (token+from → capturePhone, HMAC). Qoldi: WhatsApp Cloud API kredensial (test account), SMS, expire scheduler
+- **Web capture URL:** `GET /api/keshbek/qr-session/:token` — brauzer (Accept: text/html) → telefon-formasi HTML; API client → JSON (content-negotiation). wa.me deep-link `whatsappNumber` sozlangan bo'lsa.
+- **Toggle xatti-harakati:** OFF → chek/elektron chek QR YO'Q (print-hub + receipt sahifasi `keshbekConfig().enabled` gate); POS КЕШБЭК tugma yashirin; `capturePhone()` ichida yagona gate (web + webhook OFF'da earn qilmaydi, sessiya pending'ga qaytadi).
+- **Pul xavfsizligi:** spend GLOBAL'da atomik; POS `/pay` save uzilsa `refundViaGlobal` (idempotent) kompensatsiya; `payments[].mixed.cashback` + finalize agregati (partiallyPaid+cashback yaxlitligi). Usul almashganda POS split tozalanadi (ko'rinmas cashback drenaji yo'q).
 - **Default:** OFF
 - **Version:** 1
 - **requires:** core (payment, order)
