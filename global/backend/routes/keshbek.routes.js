@@ -11,6 +11,7 @@ import {
 } from "../models/keshbek.model.js";
 import restaurantsModel from "../models/restaurants.model.js";
 import config from "../config/index.js";
+import { normalizePhone, countryFromCurrency } from "../utils/phone.js";
 import { audit } from "../utils/audit.js";
 
 // KESHBEK API — obsidian/04-toollar/keshbek-tizimi.md
@@ -24,7 +25,16 @@ import { audit } from "../utils/audit.js";
 //  3) USER (admin)   — balanslar/harakatlar ro'yxati (filial_admin sahifa).
 const router = express.Router();
 
-const normPhone = (p) => String(p || "").replace(/[^\d+]/g, "");
+// Telefonni restoran davlatiga ko'ra E.164 ga keltiradi (POS spend "+7…"/"+998…",
+// web, WhatsApp "998…" — HAMMASI bitta kalit; balans bo'linmaydi). null = noto'g'ri.
+async function normFor(restaurantId, raw) {
+  try {
+    const r = await restaurantsModel.findById(restaurantId).select("currency");
+    return normalizePhone(raw, countryFromCurrency(r?.currency));
+  } catch {
+    return null;
+  }
+}
 const CUR = (c) => ({ KZT: "₸", UZS: "сум", RUB: "₽", USD: "$" }[String(c || "").toUpperCase()] || c || "");
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[ch]));
 const wantsHtml = (req) => String(req.headers.accept || "").includes("text/html");
@@ -246,7 +256,9 @@ branchRouter.get("/balance/:phone", async (req, res) => {
     const restaurantId = req.branch.restaurant;
     const { enabled, config } = await keshbekConfig(restaurantId);
     if (!enabled) return res.status(404).json({ status: "error", code: "FEATURE_DISABLED" });
-    const bal = await cashbackBalanceModel.findOne({ restaurantId, clientPhone: normPhone(req.params.phone) });
+    const phone = await normFor(restaurantId, req.params.phone);
+    if (!phone) return res.status(400).json({ status: "error", code: "INVALID_PHONE", message: "Неверный номер телефона" });
+    const bal = await cashbackBalanceModel.findOne({ restaurantId, clientPhone: phone });
     return res.json({
       status: "success",
       data: { balance: bal?.balance || 0, percent: config.percent },
@@ -261,11 +273,13 @@ branchRouter.post("/spend", async (req, res) => {
     const restaurantId = req.branch.restaurant;
     const { enabled } = await keshbekConfig(restaurantId);
     if (!enabled) return res.status(404).json({ status: "error", code: "FEATURE_DISABLED" });
-    const { phone, amount, orderId } = req.body || {};
+    const { phone: rawPhone, amount, orderId } = req.body || {};
+    const phone = await normFor(restaurantId, rawPhone);
+    if (!phone) return res.status(400).json({ status: "error", code: "INVALID_PHONE", message: "Неверный номер телефона" });
     const r = await spendCashback({
       restaurantId,
       branch: req.branch._id,
-      phone: normPhone(phone),
+      phone,
       amount,
       orderId,
     });
@@ -273,7 +287,7 @@ branchRouter.post("/spend", async (req, res) => {
       const msg = r.error === "INSUFFICIENT" ? "Недостаточно кешбэка на балансе" : "Неверная сумма";
       return res.status(400).json({ status: "error", code: r.error, message: msg });
     }
-    await audit.log({ kind: "keshbek_spend", restaurantId, branchId: req.branch._id, message: `${normPhone(phone)}: -${r.spent}` });
+    await audit.log({ kind: "keshbek_spend", restaurantId, branchId: req.branch._id, message: `${phone}: -${r.spent}` });
     return res.json({ status: "success", data: r });
   } catch (e) {
     return res.status(500).json({ status: "error", message: e.message });
@@ -315,9 +329,11 @@ adminRouter.get("/balances", async (req, res) => {
 
 adminRouter.get("/balance/:phone", async (req, res) => {
   try {
+    const phone = await normFor(req.userData.restaurantId, req.params.phone);
+    if (!phone) return res.status(400).json({ status: "error", code: "INVALID_PHONE", message: "Неверный номер телефона" });
     const bal = await cashbackBalanceModel.findOne({
       restaurantId: req.userData.restaurantId,
-      clientPhone: normPhone(req.params.phone),
+      clientPhone: phone,
     });
     return res.json({ status: "success", data: { balance: bal?.balance || 0 } });
   } catch (e) {
@@ -327,8 +343,10 @@ adminRouter.get("/balance/:phone", async (req, res) => {
 
 adminRouter.get("/movements/:phone", async (req, res) => {
   try {
+    const phone = await normFor(req.userData.restaurantId, req.params.phone);
+    if (!phone) return res.status(400).json({ status: "error", code: "INVALID_PHONE", message: "Неверный номер телефона" });
     const list = await cashbackMovementModel
-      .find({ restaurantId: req.userData.restaurantId, clientPhone: normPhone(req.params.phone) })
+      .find({ restaurantId: req.userData.restaurantId, clientPhone: phone })
       .sort({ createdAt: -1 })
       .limit(100);
     return res.json({ status: "success", data: list });

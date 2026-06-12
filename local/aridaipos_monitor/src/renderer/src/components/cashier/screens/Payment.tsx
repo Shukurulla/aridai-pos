@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Order, PaymentType, PaymentSplit } from '@/types';
 import { api } from '@/services/api';
-import { T, NavIcon, fmt, fmtN } from '@/lib/theme';
+import { T, NavIcon, fmt, fmtN, useCurrency } from '@/lib/theme';
 import { Pager, CTA } from '../shell';
 import { ScreenCtx } from './types';
 import { itemLineTotal, computeHourlyForItem, hasLiveHourly } from '@/utils/hourly';
@@ -48,6 +48,9 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const [brSvcEn, setBrSvcEn] = useState(false);
   const [brSvcPct, setBrSvcPct] = useState(0);
   const [brDiscPct, setBrDiscPct] = useState(0);
+  // Telefon prefiksi — filial valyutasidan (₸=KZ → +7, сум=UZ → +998). Ekran
+  // klaviaturasida '+' yo'q, shuning uchun prefiks AVTOMATIK — kassir faqat raqam yozadi.
+  const dialPrefix = useCurrency() === 'сум' ? '+998' : '+7';
 
   const allItems = useMemo(
     () => (order ? order.items.filter((i) => i.status !== 'cancelled' && !i.isDeleted) : []),
@@ -195,10 +198,11 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   const isValid =
     (mode === 'full' || selectedItems.length > 0) &&
     (!splitMode || Math.abs(splitRemaining) < 100) &&
-    // KESHBEK: summa balans tekshiruvidan o'tgan va balansdan oshmagan bo'lishi shart
-    (kbUsed <= 0 || (kbBalance != null && kbUsed <= kbBalance && kbPhone.trim().length >= 9)) &&
-    // Кешбэк usuli tanlangan bo'lsa — balansdan to'lov majburiy (kamida 1)
-    (payType !== 'cashback' || kbUsed > 0) &&
+    // KESHBEK: balansdan to'lansa (kbUsed>0) — tekshirilgan, oshmagan, telefon to'liq
+    (kbUsed <= 0 || (kbBalance != null && kbUsed <= kbBalance && kbPhone.length >= 9)) &&
+    // Кешбэк usuli: balans TEKSHIRILGAN bo'lsin (0 bo'lsa ham — qolgani naqd/karta/
+    // perevod bilan to'lanadi; balansdan to'lov MAJBURIY EMAS).
+    (payType !== 'cashback' || kbBalance != null) &&
     // Naqd: "Получено" summasi to'liq summadan KAM bo'lsa to'lash MUMKIN EMAS
     // (foydalanuvchi talabi: kam summa o'tib ketmasin). received >= grandTotal shart.
     (payType !== 'cash' || (received !== null && received >= grandTotal));
@@ -206,11 +210,11 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
   // KESHBEK — telefon orqali balansni tekshirish (faqat online; offline → aniq xato).
   // Balansdan to'lov avto: cashback = min(balans, summa), qolgani naqdga (almashsa bo'ladi).
   const checkKbBalance = async () => {
-    if (kbBusy || kbPhone.trim().length < 9) return;
+    if (kbBusy || kbPhone.length < 9) return;
     setKbBusy(true);
     setKbErr('');
     try {
-      const d = await api.keshbekBalance(kbPhone.trim());
+      const d = await api.keshbekBalance(dialPrefix + kbPhone);
       const bal = d.balance || 0;
       setKbBalance(bal);
       const cb = Math.min(bal, grandTotal);
@@ -241,11 +245,20 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
       // cashback usuli backend'ga 'mixed' bo'lib boradi (split.cashback + qolgani).
       // HIMOYA: cashback FAQAT 'cashback' usulida yuboriladi — mixed'da hech qachon
       // (backend faqat shu split.cashback'ga qarab balansdan yechadi).
-      const paymentType: PaymentType = splitMode ? 'mixed' : payType;
       const cbToSend = payType === 'cashback' ? split.cashback || 0 : 0;
-      const splitArg = splitMode
-        ? { ...split, cashback: cbToSend, cashbackPhone: cbToSend > 0 ? kbPhone.trim() : undefined }
+      let paymentType: PaymentType = splitMode ? 'mixed' : payType;
+      let splitArg = splitMode
+        ? { ...split, cashback: cbToSend, cashbackPhone: cbToSend > 0 ? dialPrefix + kbPhone : undefined }
         : undefined;
+      // Keshbek tanlangan-u balansdan to'lov yo'q (balans 0) + qolgani BITTA usul
+      // bilan to'liq to'langan bo'lsa — 'mixed' emas, o'sha toza usul yoziladi.
+      if (payType === 'cashback' && cbToSend === 0) {
+        const active = (['cash', 'card', 'click'] as const).filter((k) => (split[k] || 0) > 0);
+        if (active.length === 1) {
+          paymentType = active[0];
+          splitArg = undefined;
+        }
+      }
       if (mode === 'partial') {
         await ctx.onPartialPay(order._id, Array.from(selected), paymentType, splitArg, undefined);
       } else {
@@ -969,21 +982,27 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
               ) : (
                 <>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      inputMode="tel"
-                      value={kbPhone}
-                      onChange={(e) => {
-                        setKbPhone(e.target.value.replace(/[^\d+]/g, ''));
-                        setKbBalance(null);
-                        setKbErr('');
-                      }}
-                      placeholder="+7 700 …"
-                      style={{ flex: 1, height: 48, padding: '0 12px', background: T.surface, border: `2px solid ${T.borderStrong}`, fontSize: 18, fontFamily: T.font, fontWeight: 800 }}
-                    />
+                    {/* Prefiks AVTOMATIK (filial davlati) — kassir faqat lokal raqam yozadi */}
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', border: `2px solid ${T.borderStrong}`, background: T.surface }}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '0 12px', background: T.panel, fontSize: 18, fontWeight: 900, borderRight: `2px solid ${T.borderStrong}`, whiteSpace: 'nowrap' }}>
+                        {dialPrefix}
+                      </div>
+                      <input
+                        inputMode="tel"
+                        value={kbPhone}
+                        onChange={(e) => {
+                          setKbPhone(e.target.value.replace(/\D/g, ''));
+                          setKbBalance(null);
+                          setKbErr('');
+                        }}
+                        placeholder={dialPrefix === '+998' ? '90 123 45 67' : '700 123 45 67'}
+                        style={{ flex: 1, minWidth: 0, height: 48, padding: '0 12px', background: 'transparent', border: 'none', outline: 'none', fontSize: 18, fontFamily: T.font, fontWeight: 800 }}
+                      />
+                    </div>
                     <button
                       onClick={checkKbBalance}
-                      disabled={kbBusy || kbPhone.trim().length < 9}
-                      style={{ height: 48, padding: '0 18px', background: '#7c3aed', color: '#fff', border: 'none', fontFamily: T.font, fontSize: 15, fontWeight: 900, cursor: 'pointer', opacity: kbBusy || kbPhone.trim().length < 9 ? 0.5 : 1 }}
+                      disabled={kbBusy || kbPhone.length < 9}
+                      style={{ height: 48, padding: '0 18px', background: '#7c3aed', color: '#fff', border: 'none', fontFamily: T.font, fontSize: 15, fontWeight: 900, cursor: 'pointer', opacity: kbBusy || kbPhone.length < 9 ? 0.5 : 1 }}
                     >
                       {kbBusy ? '…' : 'Проверить'}
                     </button>
@@ -997,24 +1016,30 @@ export function PaymentScreen({ ctx }: { ctx: ScreenCtx }) {
                         <span style={{ color: T.textMuted }}>Баланс гостя</span>
                         <span style={{ color: '#7c3aed', fontVariantNumeric: 'tabular-nums' }}>{fmt(kbBalance)}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ minWidth: 130, fontSize: 14, fontWeight: 800 }}>Списать кешбэком</div>
-                        <input
-                          inputMode="numeric"
-                          value={(split.cashback || 0) > 0 ? fmtN(split.cashback || 0) : ''}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value.replace(/\D/g, '')) || 0;
-                            setSplit((s) => {
-                              const cb = Math.min(v, kbBalance, grandTotal);
-                              return kbManual
-                                ? { ...s, cashback: cb }
-                                : { cash: Math.max(0, grandTotal - cb), card: 0, click: 0, cashback: cb };
-                            });
-                          }}
-                          placeholder="0"
-                          style={{ flex: 1, height: 48, padding: '0 12px', background: T.surface, border: `2px solid ${T.borderStrong}`, fontSize: 18, fontFamily: T.font, fontWeight: 800, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                        />
-                      </div>
+                      {kbBalance > 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ minWidth: 130, fontSize: 14, fontWeight: 800 }}>Списать кешбэком</div>
+                          <input
+                            inputMode="numeric"
+                            value={(split.cashback || 0) > 0 ? fmtN(split.cashback || 0) : ''}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                              setSplit((s) => {
+                                const cb = Math.min(v, kbBalance, grandTotal);
+                                return kbManual
+                                  ? { ...s, cashback: cb }
+                                  : { cash: Math.max(0, grandTotal - cb), card: 0, click: 0, cashback: cb };
+                              });
+                            }}
+                            placeholder="0"
+                            style={{ flex: 1, height: 48, padding: '0 12px', background: T.surface, border: `2px solid ${T.borderStrong}`, fontSize: 18, fontFamily: T.font, fontWeight: 800, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ background: T.surface, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: T.textMuted }}>
+                          У гостя нет кешбэка — оплатите другим способом ниже.
+                        </div>
+                      )}
                       {grandTotal - (split.cashback || 0) > 0 && (
                         <div style={{ borderTop: `2px dashed ${T.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div style={{ fontSize: 13, fontWeight: 800, color: T.textMuted }}>

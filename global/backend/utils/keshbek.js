@@ -10,6 +10,7 @@ import {
   cashbackMovementModel,
   cashbackQrSessionModel,
 } from "../models/keshbek.model.js";
+import { normalizePhone, countryFromCurrency } from "./phone.js";
 
 // Toggle + config (registry defaultConfig: percent 5, minOrderAmount 1000)
 export async function keshbekConfig(restaurantId) {
@@ -68,12 +69,12 @@ export async function createEarnSession(order) {
 // Bot phone capture: sessiya pending + muddati o'tmagan → balans += earn (atomik).
 // Idempotent: findOneAndUpdate status pending → phone_captured (ikkinchi urinish ta'sirsiz).
 export async function capturePhone(token, rawPhone) {
-  const phone = String(rawPhone || "").replace(/[^\d+]/g, "");
-  if (!phone || phone.length < 9) return { error: "INVALID_PHONE" };
+  const cleaned = String(rawPhone || "").replace(/[^\d+]/g, "");
+  if (!cleaned || cleaned.length < 7) return { error: "INVALID_PHONE" };
 
   const session = await cashbackQrSessionModel.findOneAndUpdate(
     { qrToken: token, status: "pending", expiresAt: { $gt: new Date() } },
-    { $set: { status: "phone_captured", capturedPhone: phone, capturedAt: new Date() } },
+    { $set: { status: "phone_captured", capturedAt: new Date() } },
     { new: true },
   );
   if (!session) {
@@ -95,9 +96,22 @@ export async function capturePhone(token, rawPhone) {
   // webhook ham shu yerdan o'tadi ("OFF => earn yo'q" har bir kanalda kafolat).
   const { enabled, config } = await keshbekConfig(session.restaurantId);
   if (!enabled) {
-    await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { status: "pending", capturedPhone: null, capturedAt: null } });
+    await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { status: "pending", capturedAt: null } });
     return { error: "FEATURE_DISABLED" };
   }
+
+  // E.164 normalizatsiya (restoran davlatidan) — POS spend ("+7…"/"+998…"), web,
+  // WhatsApp ("998…") HAMMASI bitta kalitga keladi (balans bo'linmaydi).
+  const rest = await restaurantsModel.findById(session.restaurantId).select("currency");
+  let phone;
+  try {
+    phone = normalizePhone(cleaned, countryFromCurrency(rest?.currency));
+  } catch {
+    await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { status: "pending", capturedAt: null } });
+    return { error: "INVALID_PHONE" };
+  }
+  await cashbackQrSessionModel.updateOne({ _id: session._id }, { $set: { capturedPhone: phone } });
+
   const bal = await cashbackBalanceModel.findOneAndUpdate(
     { restaurantId: session.restaurantId, clientPhone: phone },
     {
